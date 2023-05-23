@@ -57,11 +57,9 @@ class StableDiffusionControlNet(nn.Module):
         #     self.device)
         self.unet = UNet2DConditionModel.from_pretrained(model_name, subfolder='unet', use_auth_token=self.token).to(device)
         self.controlnet_depth = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", use_auth_token=self.token).to(device)
-        # if self.use_inpaint:
-            # self.inpaint_unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
-                                                                    #  subfolder="unet", use_auth_token=self.token).to(
-                # self.device)
-
+        
+        if self.use_inpaint:
+            self.inpaint_unet = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-inpainting", subfolder="unet", use_auth_token=self.token).to(self.device)
 
         # 4. Create a scheduler for inference
         self.scheduler = PNDMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear",
@@ -227,8 +225,7 @@ class StableDiffusionControlNet(nn.Module):
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input,
                                                                           t)  # NOTE: This does nothing
 
-                    # if is_inpaint_iter:
-                    if False:
+                    if is_inpaint_iter:
                         latent_mask = torch.cat([update_mask] * 2)
                         latent_image = torch.cat([masked_latents] * 2)
                         latent_model_input_inpaint = torch.cat([latent_model_input, latent_mask, latent_image], dim=1)
