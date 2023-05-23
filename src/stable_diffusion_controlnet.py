@@ -56,7 +56,7 @@ class StableDiffusionControlNet(nn.Module):
         # self.unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet", use_auth_token=self.token).to(
         #     self.device)
         self.unet = UNet2DConditionModel.from_pretrained(model_name, subfolder='unet', use_auth_token=self.token).to(device)
-        self.controlnet_depth = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth", use_auth_token=self.token).to(device)
+        self.controlnet_depth = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", use_auth_token=self.token).to(device)
         # if self.use_inpaint:
             # self.inpaint_unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
                                                                     #  subfolder="unet", use_auth_token=self.token).to(
