@@ -56,10 +56,17 @@ class StableDiffusionControlNet(nn.Module):
         # self.unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet", use_auth_token=self.token).to(
         #     self.device)
         self.unet = UNet2DConditionModel.from_pretrained(model_name, subfolder='unet', use_auth_token=self.token).to(device)
+        
+        # TODO: lora model load automation
+        # LORA_MODEL_PATH = "/home/ubuntu/jayden/TEXTurePaper/trained_models/lvt_pattern_lora"
+        # self.unet.load_attn_procs(LORA_MODEL_PATH)
+        
+        # controlnet
         self.controlnet_depth = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", use_auth_token=self.token).to(device)
         
         if self.use_inpaint:
             self.inpaint_unet = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-inpainting", subfolder="unet", use_auth_token=self.token).to(self.device)
+            # self.inpaint_unet.load_attn_procs(LORA_MODEL_PATH)
 
         # 4. Create a scheduler for inference
         self.scheduler = PNDMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear",
