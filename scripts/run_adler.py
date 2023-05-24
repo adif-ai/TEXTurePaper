@@ -24,10 +24,6 @@ sd_models = [
     "SG161222/Realistic_Vision_V2.0",
 ]
 
-def run_trainer(cfg):
-    trainer = TEXTure(cfg)
-    trainer.paint()
-
 for sd_model in sd_models:
     for concept in concepts:
         for asset in adler_assets:
@@ -46,13 +42,20 @@ for sd_model in sd_models:
                     "optim": {"seed": 3},
                 }
 
-                config_path = "configs/text_guided/tmp.yaml"
-                with open("configs/text_guided/tmp.yaml", "w") as f:
-                    yaml.dump(config_dict, f)
+                if not os.path.exists(
+                    f"experiments/{os.path.basename(sd_model)}/{concept}/{os.path.basename(asset)}/results/step_00010_rgb.mp4"
+                ):
+                    config_path = "configs/text_guided/tmp.yaml"
+                    with open("configs/text_guided/tmp.yaml", "w") as f:
+                        yaml.dump(config_dict, f)
 
-                cfg = pyrallis.parse(config_class=TrainConfig, config_path=config_path)
-
-                run_trainer(cfg)
+                    os.system(
+                        "python -m scripts.run_texture --config_path=configs/text_guided/tmp.yaml"
+                    )
+                else:
+                    logger.info(
+                        f"already exists: experiments/{os.path.basename(sd_model)}/{concept}/{os.path.basename(asset)}"
+                    )
 
             except Exception as e:
                 logger.info(traceback.format_exc())
