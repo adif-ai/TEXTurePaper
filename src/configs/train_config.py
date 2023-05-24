@@ -34,7 +34,11 @@ class RenderConfig:
 class GuideConfig:
     """ Parameters defining the guidance """
     # Guiding text prompt
-    text: str
+    text: str = ""
+    # Guiding added text prompt
+    added_text: str = "best quality, extremely detailed"
+    # Guiding negative text prompt
+    negative_text: str = "longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality"
     # The mesh to paint
     shape_path: str = 'shapes/spot_triangulated.obj'
     # Append direction to text prompts

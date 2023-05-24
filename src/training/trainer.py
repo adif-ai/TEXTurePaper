@@ -96,8 +96,10 @@ class TEXTure:
 
     def calc_text_embeddings(self) -> Union[torch.Tensor, List[torch.Tensor]]:
         ref_text = self.cfg.guide.text
+        ref_text = ref_text + ", " + self.cfg.guide.added_text
+        negative_prompt = self.cfg.guide.negative_text
         if not self.cfg.guide.append_direction:
-            text_z = self.diffusion.get_text_embeds([ref_text])
+            text_z = self.diffusion.get_text_embeds([ref_text], negative_prompt=negative_prompt)
             text_string = ref_text
         else:
             text_z = []
@@ -106,7 +108,6 @@ class TEXTure:
                 text = ref_text.format(d)
                 text_string.append(text)
                 logger.info(text)
-                negative_prompt = None
                 logger.info(negative_prompt)
                 text_z.append(self.diffusion.get_text_embeds([text], negative_prompt=negative_prompt))
         return text_z, text_string
