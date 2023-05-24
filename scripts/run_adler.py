@@ -24,6 +24,9 @@ sd_models = [
     "SG161222/Realistic_Vision_V2.0",
 ]
 
+def run_trainer(cfg):
+    trainer = TEXTure(cfg)
+    trainer.paint()
 
 for sd_model in sd_models:
     for concept in concepts:
@@ -49,7 +52,7 @@ for sd_model in sd_models:
 
                 cfg = pyrallis.parse(config_class=TrainConfig, config_path=config_path)
 
-                trainer = TEXTure(cfg)
-                trainer.paint()
+                run_trainer(cfg)
+
             except Exception as e:
                 logger.info(traceback.format_exc())
