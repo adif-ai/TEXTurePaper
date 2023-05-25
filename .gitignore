@@ -8,5 +8,7 @@ data/*
 logs/*
 .idea
 cache/*
-experiments/*
+experiments*/*
+*.log
 .vscode/*
+results/*
