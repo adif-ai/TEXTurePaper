@@ -8,6 +8,7 @@ import traceback
 from loguru import logger
 
 adler_assets = glob("./shapes/adler/*.obj")
+exp_root = "experiments"
 concepts = [
     "modern, black and white",
     "modern, iron, black",
@@ -26,15 +27,19 @@ sd_models = [
 
 for sd_model in sd_models:
     for concept in concepts:
+        exp_path = f"{exp_root}/{os.path.basename(sd_model)}/{concept}/"
         for asset in adler_assets:
             try:
+                prompt = f"{os.path.basename(asset).split('_')[0].replace('.obj', '')}, {'{}'} view, {concept}"
+                if os.path.basename(sd_model) == "Arcane-Diffusion":
+                    prompt += ", arcane style, league of legends"
                 config_dict = {
                     "log": {
-                        "exp_root": f"experiments/{os.path.basename(sd_model)}/{concept}/",
+                        "exp_root": exp_path,
                         "exp_name": f"{os.path.basename(asset)}",
                     },
                     "guide": {
-                        "text": f"{os.path.basename(asset).split('_')[0].replace('.obj', '')}, {'{}'} view, {concept}",
+                        "text": prompt,
                         "diffusion_name": sd_model,
                         "append_direction": True,
                         "shape_path": asset,
@@ -43,7 +48,7 @@ for sd_model in sd_models:
                 }
 
                 if not os.path.exists(
-                    f"experiments/{os.path.basename(sd_model)}/{concept}/{os.path.basename(asset)}/results/step_00010_rgb.mp4"
+                    f"{exp_path}/{os.path.basename(asset)}/results/step_00010_rgb.mp4"
                 ):
                     config_path = "configs/text_guided/tmp.yaml"
                     with open("configs/text_guided/tmp.yaml", "w") as f:
@@ -54,7 +59,7 @@ for sd_model in sd_models:
                     )
                 else:
                     logger.info(
-                        f"already exists: experiments/{os.path.basename(sd_model)}/{concept}/{os.path.basename(asset)}"
+                        f"already exists: {exp_path}/{os.path.basename(asset)}"
                     )
 
             except Exception as e:
