@@ -1,6 +1,11 @@
-from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
+from diffusers import (
+    StableDiffusionControlNetPipeline,
+    ControlNetModel,
+    UniPCMultistepScheduler,
+)
 from diffusers.utils import load_image
 import torch
+from controlnet_aux import MidasDetector
 
 base_model_path = "Linaqruf/anything-v3.0"
 controlnet_path = "lllyasviel/sd-controlnet-depth"
@@ -17,11 +22,16 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
 pipe.enable_model_cpu_offload()
 
-control_image = load_image("./sofa.jpg")
+control_image = load_image("demos/png/sofa.jpg").resize((512, 512))
+midas = MidasDetector.from_pretrained("lllyasviel/Annotators")
+control_image = midas(control_image)
+
 prompt = "blue sofa"
 
 # generate image
 generator = torch.manual_seed(0)
-image = pipe(prompt, num_inference_steps=20, generator=generator, image=control_image).images[0]
+image = pipe(
+    prompt, num_inference_steps=20, generator=generator, image=control_image
+).images[0]
 
-image.save("./output.png")
+image.save("demos/png/depth.png")
