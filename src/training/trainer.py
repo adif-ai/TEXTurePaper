@@ -18,11 +18,14 @@ from tqdm import tqdm
 from src import utils
 from src.configs.train_config import TrainConfig
 from src.models.textured_mesh import TexturedMeshModel
-from src.stable_diffusion_depth import StableDiffusion
-from src.stable_diffusion_controlnet import StableDiffusionControlNet
 from src.training.views_dataset import ViewsDataset, MultiviewDataset
 from src.utils import make_path, tensor2numpy
 
+from diffusers import (
+    StableDiffusionControlNetInpaintPipeline,
+    ControlNetModel,
+    DDIMScheduler,
+)
 
 class TEXTure:
     def __init__(self, cfg: TrainConfig):
@@ -44,8 +47,23 @@ class TEXTure:
 
         self.view_dirs = ['front', 'left', 'back', 'right', 'overhead', 'bottom']
         self.mesh_model = self.init_mesh_model()
-        self.diffusion = self.init_diffusion()
-        self.text_z, self.text_string = self.calc_text_embeddings()
+
+        self.controlnet = [
+            ControlNetModel.from_pretrained(
+                "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
+            ),
+            ControlNetModel.from_pretrained(
+                "lllyasviel/control_v11f1p_sd15_depth", torch_dtype=torch.float16
+            ),
+        ]
+        self.pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, torch_dtype=torch.float16
+        )
+
+        self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
+        self.pipe.enable_model_cpu_offload()
+        self.generator = torch.Generator(device="cpu").manual_seed(1)
+
         self.dataloaders = self.init_dataloaders()
         self.back_im = torch.Tensor(np.array(Image.open(self.cfg.guide.background_img).convert('RGB'))).to(
             self.device).permute(2, 0,
@@ -67,50 +85,6 @@ class TEXTure:
             f'Loaded Mesh, #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
         logger.info(model)
         return model
-
-    def init_diffusion(self) -> Any:
-        if self.cfg.guide.diffusion_name == "stabilityai/stable-diffusion-2-depth":
-            # stable diffusion 2 depth model 
-            diffusion_model = StableDiffusion(self.device, model_name=self.cfg.guide.diffusion_name,
-                                            concept_name=self.cfg.guide.concept_name,
-                                            concept_path=self.cfg.guide.concept_path,
-                                            latent_mode=False,
-                                            min_timestep=self.cfg.optim.min_timestep,
-                                            max_timestep=self.cfg.optim.max_timestep,
-                                            no_noise=self.cfg.optim.no_noise,
-                                            use_inpaint=True)
-        else:
-            # stable diffusion 1.5 + controlnet (depth)
-            diffusion_model = StableDiffusionControlNet(self.device, model_name=self.cfg.guide.diffusion_name,
-                                          concept_name=self.cfg.guide.concept_name,
-                                          concept_path=self.cfg.guide.concept_path,
-                                          latent_mode=False,
-                                          min_timestep=self.cfg.optim.min_timestep,
-                                          max_timestep=self.cfg.optim.max_timestep,
-                                          no_noise=self.cfg.optim.no_noise,
-                                          use_inpaint=True)
-
-        for p in diffusion_model.parameters():
-            p.requires_grad = False
-        return diffusion_model
-
-    def calc_text_embeddings(self) -> Union[torch.Tensor, List[torch.Tensor]]:
-        ref_text = self.cfg.guide.text
-        ref_text = ref_text + ", " + self.cfg.guide.added_text
-        negative_prompt = self.cfg.guide.negative_text
-        if not self.cfg.guide.append_direction:
-            text_z = self.diffusion.get_text_embeds([ref_text], negative_prompt=negative_prompt)
-            text_string = ref_text
-        else:
-            text_z = []
-            text_string = []
-            for d in self.view_dirs:
-                text = ref_text.format(d)
-                text_string.append(text)
-                logger.info(text)
-                logger.info(negative_prompt)
-                text_z.append(self.diffusion.get_text_embeds([text], negative_prompt=negative_prompt))
-        return text_z, text_string
 
     def init_dataloaders(self) -> Dict[str, DataLoader]:
         init_train_dataloader = MultiviewDataset(self.cfg.render, device=self.device).dataloader()
@@ -203,6 +177,13 @@ class TEXTure:
 
             logger.info(f"\tDone!")
 
+    def make_inpaint_condition(self, image, image_mask):
+        assert (
+            image.size()[2:] == image_mask.size()[2:]
+        ), "image and image_mask must have the same image size"
+        image[image_mask > 0.5] = -1.0  # set as masked pixel
+        return image
+
     def paint_viewpoint(self, data: Dict[str, Any]):
         logger.info(f'--- Painting step #{self.paint_step} ---')
         theta, phi, radius = data['theta'], data['phi'], data['radius']
@@ -221,6 +202,11 @@ class TEXTure:
 
         # Render from viewpoint
         outputs = self.mesh_model.render(theta=theta, phi=phi, radius=radius, background=background)
+
+        # self.log_train_image(outputs['image'], name='raw_image')
+        # self.log_train_image(torch.cat(3 * [outputs['mask']], dim=1), name='raw_mask')
+        # self.log_train_image(torch.cat(3 * [outputs['depth']], dim=1), name='raw_depth')
+
         render_cache = outputs['render_cache']
         rgb_render_raw = outputs['image']  # Render where missing values have special color
         depth_render = outputs['depth']
@@ -236,61 +222,52 @@ class TEXTure:
         z_normals_cache = meta_output['image'].clamp(0, 1)
         edited_mask = meta_output['image'].clamp(0, 1)[:, 1:2]
 
-        self.log_train_image(rgb_render, 'rendered_input')
-        self.log_train_image(depth_render[0, 0], 'depth', colormap=True)
-        self.log_train_image(z_normals[0, 0], 'z_normals', colormap=True)
-        self.log_train_image(z_normals_cache[0, 0], 'z_normals_cache', colormap=True)
-
-        # text embeddings
-        if self.cfg.guide.append_direction:
-            dirs = data['dir']  # [B,]
-            text_z = self.text_z[dirs]
-            text_string = self.text_string[dirs]
-        else:
-            text_z = self.text_z
-            text_string = self.text_string
-        logger.info(f'text: {text_string}')
-
         update_mask, generate_mask, refine_mask = self.calculate_trimap(rgb_render_raw=rgb_render_raw,
                                                                         depth_render=depth_render,
                                                                         z_normals=z_normals,
                                                                         z_normals_cache=z_normals_cache,
                                                                         edited_mask=edited_mask,
                                                                         mask=outputs['mask'])
-
-        update_ratio = float(update_mask.sum() / (update_mask.shape[2] * update_mask.shape[3]))
-        if self.cfg.guide.reference_texture is not None and update_ratio < 0.01:
-            logger.info(f'Update ratio {update_ratio:.5f} is small for an editing step, skipping')
-            return
-
-        self.log_train_image(rgb_render * (1 - update_mask), name='masked_input')
-        self.log_train_image(rgb_render * refine_mask, name='refine_regions')
+        diff = (rgb_render_raw.detach() - torch.tensor(self.mesh_model.default_color).view(1, 3, 1, 1).to(self.device)).abs().sum(axis=1)
+        exact_generate_mask = (diff < 0.1).float().unsqueeze(0)
 
         # Crop to inner region based on object mask
         min_h, min_w, max_h, max_w = utils.get_nonzero_region(outputs['mask'][0, 0])
         crop = lambda x: x[:, :, min_h:max_h, min_w:max_w]
         cropped_rgb_render = crop(rgb_render)
         cropped_depth_render = crop(depth_render)
-        cropped_update_mask = crop(update_mask)
+        cropped_mask = crop(exact_generate_mask)
         self.log_train_image(cropped_rgb_render, name='cropped_input')
 
-        checker_mask = None
-        if self.paint_step > 1:
-            checker_mask = self.generate_checkerboard(crop(update_mask), crop(refine_mask),
-                                                      crop(generate_mask))
-            self.log_train_image(F.interpolate(cropped_rgb_render, (512, 512)) * (1 - checker_mask),
-                                 'checkerboard_input')
-        self.diffusion.use_inpaint = self.cfg.guide.use_inpainting and self.paint_step > 1
+        input_image = F.interpolate(cropped_rgb_render, size=(512, 512), mode='bilinear', align_corners=False)
+        input_mask = torch.cat(3 * [F.interpolate(cropped_mask, size=(512, 512))], dim=1)
+        input_depth = torch.cat(3 * [F.interpolate(cropped_depth_render, size=(512, 512), 
+                                                   mode='bicubic', 
+                                                   align_corners=False)], dim=1)
+        input_inpaint = self.make_inpaint_condition(input_image, input_mask)
 
-        cropped_rgb_output, steps_vis = self.diffusion.img2img_step(text_z, cropped_rgb_render.detach(),
-                                                                    cropped_depth_render.detach(),
-                                                                    guidance_scale=self.cfg.guide.guidance_scale,
-                                                                    strength=1.0, update_mask=cropped_update_mask,
-                                                                    fixed_seed=self.cfg.optim.seed,
-                                                                    check_mask=checker_mask,
-                                                                    intermediate_vis=self.cfg.log.vis_diffusion_steps)
-        self.log_train_image(cropped_rgb_output, name='direct_output')
-        self.log_diffusion_steps(steps_vis)
+        self.log_train_image(input_image, name='input_image')
+        self.log_train_image(input_inpaint, name='input_inpaint')
+        self.log_train_image(input_mask, name='input_mask')
+        self.log_train_image(input_depth, name='input_depth')
+
+        pil_output = self.pipe(
+            prompt=self.cfg.guide.text + ", " + self.cfg.guide.added_text,
+            image=self.tensor_to_pil(input_image),
+            mask_image=self.tensor_to_pil(input_mask),
+            control_image=[input_inpaint.detach(), input_depth],
+            num_inference_steps=20,
+            negative_prompt=self.cfg.guide.negative_text,
+            eta=1.0,
+            generator=self.generator,
+        ).images[0]
+
+        pil_output.save(self.train_renders_path / f'{self.paint_step:04d}_direct_output.jpg')
+
+        cropped_rgb_output = np.array(pil_output).astype(np.float32) / 255.0
+        cropped_rgb_output = np.expand_dims(cropped_rgb_output, axis=0).transpose(0, 3, 1, 2)
+        cropped_rgb_output = torch.from_numpy(cropped_rgb_output).to(self.device)
+        # self.log_train_image(cropped_rgb_output, name='direct_output')
 
         cropped_rgb_output = F.interpolate(cropped_rgb_output,
                                            (cropped_rgb_render.shape[2], cropped_rgb_render.shape[3]),
@@ -415,19 +392,6 @@ class TEXTure:
 
         return update_mask, generate_mask, refine_mask
 
-    def generate_checkerboard(self, update_mask_inner, improve_z_mask_inner, update_mask_base_inner):
-        checkerboard = torch.ones((1, 1, 64 // 2, 64 // 2)).to(self.device)
-        # Create a checkerboard grid
-        checkerboard[:, :, ::2, ::2] = 0
-        checkerboard[:, :, 1::2, 1::2] = 0
-        checkerboard = F.interpolate(checkerboard,
-                                     (512, 512))
-        checker_mask = F.interpolate(update_mask_inner, (512, 512))
-        only_old_mask = F.interpolate(torch.bitwise_and(improve_z_mask_inner == 1,
-                                                        update_mask_base_inner == 0).float(), (512, 512))
-        checker_mask[only_old_mask == 1] = checkerboard[only_old_mask == 1]
-        return checker_mask
-
     def project_back(self, render_cache: Dict[str, Any], background: Any, rgb_output: torch.Tensor,
                      object_mask: torch.Tensor, update_mask: torch.Tensor, z_normals: torch.Tensor,
                      z_normals_cache: torch.Tensor):
@@ -509,3 +473,6 @@ class TEXTure:
             Image.fromarray(
                 (einops.rearrange(tensor, '(1) c h w -> h w c').detach().cpu().numpy() * 255).astype(np.uint8)).save(
                 path)
+
+    def tensor_to_pil(self, tensor: torch.Tensor):
+        return Image.fromarray((einops.rearrange(tensor, '(1) c h w -> h w c').detach().cpu().numpy() * 255).astype(np.uint8))
