@@ -279,9 +279,15 @@ class TEXTure:
         self.log_train_image(rgb_output, name='full_output')
 
         # Project back
-        object_mask = outputs['mask']
+        # object_mask = outputs['mask']
+        object_mask = exact_generate_mask.clone()
+        input_mask = F.interpolate(input_mask,
+                                   (cropped_mask.shape[2], cropped_mask.shape[3]),
+                                   mode='bilinear', align_corners=False)
+        object_mask[:, :, min_h:max_h, min_w:max_w] = input_mask[:, 0:1]
         fitted_pred_rgb, _ = self.project_back(render_cache=render_cache, background=background, rgb_output=rgb_output,
-                                               object_mask=object_mask, update_mask=update_mask, z_normals=z_normals,
+                                            #    object_mask=object_mask, update_mask=update_mask, z_normals=z_normals,
+                                               object_mask=object_mask, update_mask=object_mask, z_normals=z_normals,
                                                z_normals_cache=z_normals_cache)
         self.log_train_image(fitted_pred_rgb, name='fitted')
 
