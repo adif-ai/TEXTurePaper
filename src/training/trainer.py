@@ -244,7 +244,7 @@ class TEXTure:
         input_depth = torch.cat(3 * [F.interpolate(cropped_depth_render, size=(512, 512), 
                                                    mode='bicubic', 
                                                    align_corners=False)], dim=1)
-        input_inpaint = self.make_inpaint_condition(input_image, input_mask)
+        input_inpaint = self.make_inpaint_condition(input_image.clone(), input_mask)
 
         self.log_train_image(input_image, name='input_image')
         self.log_train_image(input_inpaint, name='input_inpaint')
