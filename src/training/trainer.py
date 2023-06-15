@@ -8,7 +8,7 @@ import numpy as np
 import pyrallis
 import torch
 import torch.nn.functional as F
-from PIL import Image
+from PIL import Image, ImageFilter
 from loguru import logger
 from matplotlib import cm
 from torch import nn
@@ -251,20 +251,28 @@ class TEXTure:
 
         input_image = F.interpolate(cropped_rgb_render, size=(512, 512), mode='bilinear', align_corners=False)
         input_mask = torch.cat(3 * [F.interpolate(cropped_mask, size=(512, 512))], dim=1)
+        input_mask1 = input_mask.clone()
         input_depth = torch.cat(3 * [F.interpolate(cropped_depth_render, size=(512, 512), 
                                                    mode='bicubic', 
                                                    align_corners=False)], dim=1)
 
-        self.log_train_image(input_mask, name='input_mask')
+        self.log_train_image(input_mask, name='input_mask1')
 
         if self.paint_step > 1:
+            input_mask = self.blur(input_mask, self.cfg.guide.blur)
+            self.log_train_image(input_mask, name='input_mask2_blur')
+
+            input_mask = torch.cat(3 * [self.dilate(input_mask, self.cfg.guide.dilation)], dim=1)
+            self.log_train_image(input_mask, name='input_mask3_dilate')
+
             checker_mask = self.generate_checkerboard(crop(update_mask), crop(refine_mask),
                                                       crop(generate_mask))
             self.log_train_image(F.interpolate(cropped_rgb_render, (512, 512)) * (1 - checker_mask),
                                  'checkerboard_input')
-            input_mask = input_mask + torch.cat(3 * [F.interpolate(checker_mask, size=(512, 512))], dim=1)
+
+            input_mask = input_mask + input_mask1 + torch.cat(3 * [F.interpolate(checker_mask, size=(512, 512))], dim=1)
             input_mask[input_mask > 1] = 1
-            self.log_train_image(input_mask, name='input_mask_and_checker')
+            self.log_train_image(input_mask, name='input_mask4_add')
 
         input_inpaint = self.make_inpaint_condition(input_image.clone(), input_mask)
         self.log_train_image(input_image, name='input_image')

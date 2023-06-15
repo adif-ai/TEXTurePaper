@@ -73,6 +73,10 @@ class GuideConfig:
     z_update_thr: float = 0.2
     # Some more strict masking for projecting back
     strict_projection: bool = True
+    # Mask blur
+    blur: int = 2
+    # Mask dilation
+    dilation: int = 10
 
 
 @dataclass
