@@ -239,16 +239,36 @@ class TEXTure:
         cropped_mask = crop(exact_generate_mask)
         self.log_train_image(cropped_rgb_render, name='cropped_input')
 
+        update_ratio = float(update_mask.sum() / (update_mask.shape[2] * update_mask.shape[3]))
+        if self.cfg.guide.reference_texture is not None and update_ratio < 0.01:
+            logger.info(f'Update ratio {update_ratio:.5f} is small for an editing step, skipping')
+            return
+
+        self.log_train_image(rgb_render * (1 - update_mask), name='masked_input')
+        self.log_train_image(rgb_render * refine_mask, name='refine_regions')
+
+        # self.diffusion.use_inpaint = self.cfg.guide.use_inpainting and self.paint_step > 1
+
         input_image = F.interpolate(cropped_rgb_render, size=(512, 512), mode='bilinear', align_corners=False)
         input_mask = torch.cat(3 * [F.interpolate(cropped_mask, size=(512, 512))], dim=1)
         input_depth = torch.cat(3 * [F.interpolate(cropped_depth_render, size=(512, 512), 
                                                    mode='bicubic', 
                                                    align_corners=False)], dim=1)
-        input_inpaint = self.make_inpaint_condition(input_image.clone(), input_mask)
 
+        self.log_train_image(input_mask, name='input_mask')
+
+        if self.paint_step > 1:
+            checker_mask = self.generate_checkerboard(crop(update_mask), crop(refine_mask),
+                                                      crop(generate_mask))
+            self.log_train_image(F.interpolate(cropped_rgb_render, (512, 512)) * (1 - checker_mask),
+                                 'checkerboard_input')
+            input_mask = input_mask + torch.cat(3 * [F.interpolate(checker_mask, size=(512, 512))], dim=1)
+            input_mask[input_mask > 1] = 1
+            self.log_train_image(input_mask, name='input_mask_and_checker')
+
+        input_inpaint = self.make_inpaint_condition(input_image.clone(), input_mask)
         self.log_train_image(input_image, name='input_image')
         self.log_train_image(input_inpaint, name='input_inpaint')
-        self.log_train_image(input_mask, name='input_mask')
         self.log_train_image(input_depth, name='input_depth')
 
         pil_output = self.pipe(
@@ -398,6 +418,19 @@ class TEXTure:
 
         return update_mask, generate_mask, refine_mask
 
+    def generate_checkerboard(self, update_mask, refine_mask, generate_mask):
+        checkerboard = torch.ones((1, 1, 64 // 2, 64 // 2)).to(self.device)
+        # Create a checkerboard grid
+        checkerboard[:, :, ::2, ::2] = 0
+        checkerboard[:, :, 1::2, 1::2] = 0
+        checkerboard = F.interpolate(checkerboard,
+                                     (512, 512))
+        checker_mask = F.interpolate(update_mask, (512, 512))
+        only_old_mask = F.interpolate(torch.bitwise_and(refine_mask == 1,
+                                                        generate_mask == 0).float(), (512, 512))
+        checker_mask[only_old_mask == 1] = checkerboard[only_old_mask == 1]
+        return checker_mask
+
     def project_back(self, render_cache: Dict[str, Any], background: Any, rgb_output: torch.Tensor,
                      object_mask: torch.Tensor, update_mask: torch.Tensor, z_normals: torch.Tensor,
                      z_normals_cache: torch.Tensor):
@@ -482,3 +515,17 @@ class TEXTure:
 
     def tensor_to_pil(self, tensor: torch.Tensor):
         return Image.fromarray((einops.rearrange(tensor, '(1) c h w -> h w c').detach().cpu().numpy() * 255).astype(np.uint8))
+
+    def dilate(self, tensor: torch.Tensor, i: int):
+        device = tensor.device
+        return torch.from_numpy(
+            cv2.dilate(tensor[0, 0].detach().cpu().numpy(), np.ones((i, i), np.uint8))
+        ).unsqueeze(0).unsqueeze(0).to(device)
+
+    def blur(self, input_mask: torch.Tensor, i: int):
+        blur_mask = self.tensor_to_pil(input_mask).filter(ImageFilter.BoxBlur(i))
+        blur_array = np.array(blur_mask).astype(np.float32) / 255.0
+        blur_array = np.expand_dims(blur_array, axis=0).transpose(0, 3, 1, 2)
+        blur_array = torch.from_numpy(blur_array).to(self.device)
+        input_mask[blur_array < 0.15] = 0
+        return input_mask
