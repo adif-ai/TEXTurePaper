@@ -43,12 +43,16 @@ class GuideConfig:
     shape_path: str = 'shapes/spot_triangulated.obj'
     # Append direction to text prompts
     append_direction: bool = True
+    # Reference image Path
+    reference_image_path: str = None
+    # Refererence style fidelity
+    style_fidelity: float = 0.5
     # A Textual-Inversion concept to use
     concept_name: Optional[str] = None
     # Path to the TI embedding
     concept_path: Optional[Path] = None
     # A huggingface diffusion model to use
-    diffusion_name: str = 'stabilityai/stable-diffusion-2-depth'
+    diffusion_name: str = "v1-5-pruned-emaonly.safetensors"
     # Scale of mesh in 1x1x1 cube
     shape_scale: float = 0.6
     # height of mesh
@@ -92,6 +96,8 @@ class OptimConfig:
     max_timestep: float = 0.98
     # For Diffusion model
     no_noise: bool = False
+    # Diffusion steps
+    steps: int = 20
 
 
 @dataclass

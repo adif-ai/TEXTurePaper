@@ -14,6 +14,7 @@ from matplotlib import cm
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from diffusers.utils import load_image
 
 from src import utils
 from src.configs.train_config import TrainConfig
@@ -21,11 +22,11 @@ from src.models.textured_mesh import TexturedMeshModel
 from src.training.views_dataset import ViewsDataset, MultiviewDataset
 from src.utils import make_path, tensor2numpy
 
-from diffusers import (
-    StableDiffusionControlNetInpaintPipeline,
-    ControlNetModel,
-    DDIMScheduler,
-)
+# import sd webui modules
+import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../..", "stable-diffusion-webui"))
+import sd_webui_modules
 
 class TEXTure:
     def __init__(self, cfg: TrainConfig):
@@ -33,7 +34,7 @@ class TEXTure:
         self.paint_step = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        utils.seed_everything(self.cfg.optim.seed)
+        self.seed = self.cfg.optim.seed
 
         # Make view_dirs
         self.exp_path = make_path(self.cfg.log.exp_dir)
@@ -47,22 +48,14 @@ class TEXTure:
 
         self.view_dirs = ['front', 'left', 'back', 'right', 'overhead', 'bottom']
         self.mesh_model = self.init_mesh_model()
-
-        self.controlnet = [
-            ControlNetModel.from_pretrained(
-                "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
-            ),
-            ControlNetModel.from_pretrained(
-                "lllyasviel/control_v11f1p_sd15_depth", torch_dtype=torch.float16
-            ),
-        ]
-        self.pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, torch_dtype=torch.float16
-        )
-
-        self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
-        self.pipe.enable_model_cpu_offload()
-        self.generator = torch.Generator(device="cpu").manual_seed(1)
+        
+        if self.cfg.guide.diffusion_name != "v1-5-pruned-emaonly.safetensors":
+            sd_webui_modules.sd_model_load(self.cfg.guide.diffusion_name)
+        
+        if self.cfg.guide.reference_image_path is not None:
+            self.reference_image = load_image(self.cfg.guide.reference_image_path)
+        else:
+            self.reference_image = None      
 
         self.dataloaders = self.init_dataloaders()
         self.back_im = torch.Tensor(np.array(Image.open(self.cfg.guide.background_img).convert('RGB'))).to(
@@ -258,7 +251,40 @@ class TEXTure:
 
         self.log_train_image(input_mask, name='input_mask1')
 
-        if self.paint_step > 1:
+        if self.paint_step == 1:
+            # pre-diffusion
+            controlnets = [
+                sd_webui_modules.depth_controlnet(
+                    control_image=self.tensor_to_pil(input_depth),
+                    is_depth_map=True,
+                ),
+            ]
+
+            if self.reference_image is not None:
+                controlnets.append(
+                    sd_webui_modules.reference_controlnet(
+                        control_image=self.reference_image,
+                        style_fidelity=self.cfg.guide.style_fidelity,
+                    )
+                )
+            
+            pre_output = sd_webui_modules.txt2img_wrapper(
+                prompt=self.cfg.guide.text + ", " + self.cfg.guide.added_text,
+                negative_prompt=self.cfg.guide.negative_text,
+                controlnets=controlnets,
+                seed=self.seed,
+                steps=self.cfg.optim.steps,
+            )[0]
+            
+            pre_output = np.array(pre_output)
+            pre_output = pre_output[None, :] # 0~255 uint8 
+            pre_output = np.array(pre_output).astype(np.float32) / 255.0
+            pre_output = pre_output.transpose(0, 3, 1, 2) # batch, channel, width, height, 0~1
+            pre_output = torch.from_numpy(pre_output).to(self.device)
+            
+            # alternate mask region with pre output
+            input_image = input_image * (1-input_mask) + pre_output * input_mask
+        else:
             input_mask = self.blur(input_mask, self.cfg.guide.blur)
             self.log_train_image(input_mask, name='input_mask2_blur')
 
@@ -279,17 +305,32 @@ class TEXTure:
         self.log_train_image(input_inpaint, name='input_inpaint')
         self.log_train_image(input_depth, name='input_depth')
 
-        pil_output = self.pipe(
-            prompt=self.cfg.guide.text + ", " + self.cfg.guide.added_text,
-            image=self.tensor_to_pil(input_image),
-            mask_image=self.tensor_to_pil(input_mask),
-            control_image=[input_inpaint.detach(), input_depth],
-            num_inference_steps=20,
-            negative_prompt=self.cfg.guide.negative_text,
-            eta=1.0,
-            generator=self.generator,
-        ).images[0]
+        # make output with inpainting
+        controlnets = [
+            sd_webui_modules.depth_controlnet(
+                control_image=self.tensor_to_pil(input_depth),
+                is_depth_map=True,
+            ),
+            sd_webui_modules.inpaint_controlnet(),
+        ]
 
+        if self.reference_image is not None:
+            controlnets.append(
+                sd_webui_modules.reference_controlnet(
+                    control_image=self.reference_image,
+                    style_fidelity=self.cfg.guide.style_fidelity,
+                )
+            )
+
+        pil_output = sd_webui_modules.img2img_inpaint_wrapper(
+            prompt=self.cfg.guide.text + ", " + self.cfg.guide.added_text,
+            negative_prompt=self.cfg.guide.negative_text,
+            init_img=self.tensor_to_pil(input_image),
+            mask=self.tensor_to_pil(input_mask),
+            controlnets=controlnets,
+            seed=self.seed,
+            steps=self.cfg.optim.steps,
+        )[0]
         pil_output.save(self.train_renders_path / f'{self.paint_step:04d}_direct_output.jpg')
 
         cropped_rgb_output = np.array(pil_output).astype(np.float32) / 255.0

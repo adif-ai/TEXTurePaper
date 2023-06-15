@@ -1,0 +1,10 @@
+guide:
+  append_direction: true
+  diffusion_name: v1-5-pruned-emaonly.safetensors
+  shape_path: ./shapes/adler/table.obj
+  text: table, {} view, classic, antique, brown, wood
+log:
+  exp_name: wood_table_webui
+  exp_root: experiments
+optim:
+  seed: 3
