@@ -75,12 +75,18 @@ class GuideConfig:
     background_img: str = 'textures/brick_wall.png'
     # Threshold for defining refine regions
     z_update_thr: float = 0.2
+    # Use absolute threshold (use difference between z_normals_cache if False)
+    z_update_abs: bool = False
+    # # Accumulate z_normals_cache (use previous value if False)
+    # z_cache_accumulate: bool = True
     # Some more strict masking for projecting back
     strict_projection: bool = True
-    # Mask blur
-    blur: int = 2
+    # Apply refine mask (Full inpainting if False)
+    use_refine: bool = False
     # Mask dilation
-    dilation: int = 10
+    use_dilation: bool = True
+    # Checkerboard masking
+    use_checkerboard: bool = False
 
 
 @dataclass
