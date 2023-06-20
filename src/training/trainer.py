@@ -240,6 +240,18 @@ class TEXTure:
         resized_update_render = F.interpolate(cropped_update_mask, (512, 512), mode='bilinear', align_corners=False)
 
         self.log_train_image(cropped_rgb_render, name='cropped_input')
+        
+        # text embeddings
+        if self.cfg.guide.append_direction:
+            dirs = data['dir']  # [B,]
+            view = self.view_dirs[dirs]
+            text = self.cfg.guide.text.format(view)
+            prompt = text + ", " + self.cfg.guide.added_text
+        else:
+            prompt = self.cfg.guide.text + ", " + self.cfg.guide.added_text
+
+        logger.info(f'text: {prompt}')
+        logger.info(f'negative text: {self.cfg.guide.negative_text}')
 
         if self.paint_step == 1:
             # pre-diffusion
@@ -259,7 +271,7 @@ class TEXTure:
                 )
             
             pre_output = sd_webui_modules.txt2img_wrapper(
-                prompt=self.cfg.guide.text + ", " + self.cfg.guide.added_text,
+                prompt=prompt,
                 negative_prompt=self.cfg.guide.negative_text,
                 controlnets=controlnets,
                 seed=self.seed,
@@ -303,7 +315,7 @@ class TEXTure:
             )
 
         pil_output = sd_webui_modules.img2img_inpaint_wrapper(
-            prompt=self.cfg.guide.text + ", " + self.cfg.guide.added_text,
+            prompt=prompt,
             negative_prompt=self.cfg.guide.negative_text,
             init_img=self.tensor_to_pil(resized_rgb_render),
             mask=self.tensor_to_pil(resized_update_render),
