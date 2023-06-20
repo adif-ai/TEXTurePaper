@@ -1,4 +1,3 @@
-
 import yaml
 import os
 from glob import glob
@@ -12,6 +11,18 @@ ref_images = glob("references/*.png")
 sd_models = [
     "v1-5-pruned-emaonly.safetensors",
 ]
+default_config_dict = {
+    "log": {},
+    "guide": {
+        "use_refine": True,
+        "use_dilation": False,
+        "use_checkerboard": False,
+        "append_direction": True,
+        "inpainting_fill": 1,
+    },
+    "optim": {"seed": 3, "steps": 20},
+}
+
 
 # TEXTure with ref image + txt
 for sd_model in sd_models:
@@ -21,20 +32,19 @@ for sd_model in sd_models:
         for asset in assets:
             try:
                 prompt = f"{os.path.basename(asset).split('_')[0].replace('.obj', '')}, {'{}'} view, {concept}"
-                config_dict = {
-                    "log": {
-                        "exp_root": exp_path,
-                        "exp_name": f"{os.path.basename(asset)}",
-                    },
-                    "guide": {
+
+                config_dict = default_config_dict.copy()
+                config_dict["log"].update(
+                    {"exp_root": exp_path, "exp_name": f"{os.path.basename(asset)}"}
+                )
+                config_dict["guide"].update(
+                    {
                         "text": prompt,
                         "diffusion_name": sd_model,
-                        "append_direction": True,
                         "shape_path": asset,
-                        "reference_image_path": ref_image
-                    },
-                    "optim": {"seed": 3},
-                }
+                        "reference_image_path": ref_image,
+                    }
+                )
 
                 if not os.path.exists(
                     f"{exp_path}/{os.path.basename(asset)}/results/step_00010_rgb.mp4"
@@ -47,34 +57,35 @@ for sd_model in sd_models:
                         "python -m scripts.run_texture --config_path=configs/text_guided/tmp.yaml"
                     )
                 else:
-                    logger.info(
-                        f"already exists: {exp_path}/{os.path.basename(asset)}"
-                    )
+                    logger.info(f"already exists: {exp_path}/{os.path.basename(asset)}")
 
             except Exception as e:
                 logger.info(traceback.format_exc())
 
 # TEXTure with txt
-concepts = [os.path.basename(i).replace("*.png", "") for i in ref_images] + ["bubble, Mars, mantle, fish scales"]
+concepts = [os.path.basename(i).replace(".png", "") for i in ref_images] + [
+    "bubble",
+    "Mars",
+    "mantle",
+    "fish scales",
+]
 for sd_model in sd_models:
     for concept in concepts:
-        exp_path = f"{exp_root}/{os.path.basename(sd_model)}/{concept}_txt/"
+        exp_path = f"{exp_root}/{os.path.basename(sd_model)}/{concept}/"
         for asset in assets:
             try:
                 prompt = f"{os.path.basename(asset).split('_')[0].replace('.obj', '')}, {'{}'} view, {concept}"
-                config_dict = {
-                    "log": {
-                        "exp_root": exp_path,
-                        "exp_name": f"{os.path.basename(asset)}",
-                    },
-                    "guide": {
+                config_dict = default_config_dict.copy()
+                config_dict["log"].update(
+                    {"exp_root": exp_path, "exp_name": f"{os.path.basename(asset)}"}
+                )
+                config_dict["guide"].update(
+                    {
                         "text": prompt,
                         "diffusion_name": sd_model,
-                        "append_direction": True,
                         "shape_path": asset,
-                    },
-                    "optim": {"seed": 3},
-                }
+                    }
+                )
 
                 if not os.path.exists(
                     f"{exp_path}/{os.path.basename(asset)}/results/step_00010_rgb.mp4"
@@ -87,12 +98,29 @@ for sd_model in sd_models:
                         "python -m scripts.run_texture --config_path=configs/text_guided/tmp.yaml"
                     )
                 else:
-                    logger.info(
-                        f"already exists: {exp_path}/{os.path.basename(asset)}"
-                    )
+                    logger.info(f"already exists: {exp_path}/{os.path.basename(asset)}")
 
             except Exception as e:
                 logger.info(traceback.format_exc())
 
-# combine parts
+# # combine parts
+# asset_parts ={"sofa_001.obj": ["leg", "small_cushion", "cushion"],
+#               "Chair_002.obj": ["frame", "cushion"],
+#               "Table_002.obj": ["leg", "top"]
+#               }
 
+# additional_concepts = ["bubble", "Mars", "mantle", "fish scales"]
+
+# reference = True
+# print()
+# for asset in assets:
+#     all_concepts = []
+#     concepts = [os.path.basename(i).replace("*.png", "") for i in ref_images]
+#     concepts += additional_concepts
+#     for sd_model in sd_models:
+#         for concept in concepts:
+#             # txt + reference image
+#             exp_path = f"{exp_root}/{os.path.basename(sd_model)}/{concept}_reference/"
+
+#             # txt
+#             exp_path = f"{exp_root}/{os.path.basename(sd_model)}/{concept}/"
