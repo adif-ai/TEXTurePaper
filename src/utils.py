@@ -90,6 +90,11 @@ def get_nonzero_region(mask:torch.Tensor):
     min_w = int(w_start)
     max_h = int(min_h + size)
     max_w = int(min_w + size)
+    
+    min_h = max(0, min_h)
+    max_h = min(mask.shape[0], max_h)
+    min_w = max(0, min_w)
+    max_w = min(mask.shape[1], max_w)
 
     return min_h, min_w, max_h, max_w
 
