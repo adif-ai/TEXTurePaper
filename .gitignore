@@ -13,3 +13,4 @@ experiments*/*
 .vscode/*
 results/*
 tmp/*
+outputs/*

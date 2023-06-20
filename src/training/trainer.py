@@ -241,13 +241,6 @@ class TEXTure:
 
         self.log_train_image(cropped_rgb_render, name='cropped_input')
 
-        # checker_mask = None
-        # if self.paint_step > 1:
-        #     checker_mask = self.generate_checkerboard(crop(update_mask), crop(refine_mask),
-        #                                               crop(generate_mask))
-        #     self.log_train_image(F.interpolate(cropped_rgb_render, (512, 512)) * (1 - checker_mask),
-        #                          'checkerboard_input')
-
         if self.paint_step == 1:
             # pre-diffusion
             controlnets = [
@@ -281,7 +274,14 @@ class TEXTure:
             
             # alternate mask region with pre output
             resized_rgb_render = resized_rgb_render * (1-resized_update_render) + pre_output * resized_update_render
-
+        else:
+            if self.cfg.guide.use_refine and self.cfg.guide.use_checkerboard:
+                checker_mask = self.generate_checkerboard(crop(update_mask), crop(refine_mask),
+                                                        crop(generate_mask))
+                self.log_train_image(F.interpolate(cropped_rgb_render, (512, 512)) * (1 - checker_mask),
+                                    'checkerboard_input')
+                resized_update_render = resized_update_render + torch.cat(3 * [F.interpolate(checker_mask, size=(512, 512))], dim=1)
+                resized_update_render[resized_update_render > 1] = 1
         self.log_train_image(resized_rgb_render, name='input_image')
         self.log_train_image(resized_depth_render, name='input_depth')
 
@@ -375,51 +375,57 @@ class TEXTure:
         exact_generate_mask = (diff < 0.1).float().unsqueeze(0)
         generate_mask = exact_generate_mask
 
-        # # Extend mask
-        # generate_mask = torch.from_numpy(
-        #     cv2.dilate(exact_generate_mask[0, 0].detach().cpu().numpy(), np.ones((19, 19), np.uint8))).to(
-        #     exact_generate_mask.device).unsqueeze(0).unsqueeze(0)
+        if self.cfg.guide.use_dilation:
+            # Extend generate mask
+            generate_mask = torch.from_numpy(
+                cv2.dilate(exact_generate_mask[0, 0].detach().cpu().numpy(), np.ones((19, 19), np.uint8))).to(
+                exact_generate_mask.device).unsqueeze(0).unsqueeze(0)
 
         update_mask = generate_mask.clone()
-
         object_mask = torch.ones_like(update_mask)
         object_mask[depth_render == 0] = 0
-        # object_mask = torch.from_numpy(
-        #     cv2.erode(object_mask[0, 0].detach().cpu().numpy(), np.ones((7, 7), np.uint8))).to(
-        #     object_mask.device).unsqueeze(0).unsqueeze(0)
+
+        if self.cfg.guide.use_dilation:
+            # Shrink object mask
+            object_mask = torch.from_numpy(
+                cv2.erode(object_mask[0, 0].detach().cpu().numpy(), np.ones((7, 7), np.uint8))).to(
+                object_mask.device).unsqueeze(0).unsqueeze(0)
 
         # Generate the refine mask based on the z normals, and the edited mask
 
         refine_mask = torch.zeros_like(update_mask)
-        # TODO: make 0.5 to config value
-        refine_mask[z_normals > 0.5] = 1
-        refine_mask[generate_mask == 1] = 0
-        update_mask[refine_mask == 1] = 1
-        # refine_mask[z_normals > z_normals_cache[:, :1, :, :] + self.cfg.guide.z_update_thr] = 1
-        # refine_mask[z_normals_cache[:, :1, :, :] == 0] = 0
-        # if self.cfg.guide.initial_texture is None:
+        if self.cfg.guide.use_refine:
+            if self.cfg.guide.z_update_abs:
+                refine_mask[z_normals > self.cfg.guide.z_update_thr] = 1
+            else:
+                refine_mask[z_normals > z_normals_cache[:, :1, :, :] + self.cfg.guide.z_update_thr] = 1
+            refine_mask[generate_mask == 1] = 0
+            # refine_mask[z_normals_cache[:, :1, :, :] == 0] = 0
+            # if self.cfg.guide.initial_texture is None:
 
-        # elif self.cfg.guide.reference_texture is not None:
-        #     refine_mask[edited_mask == 0] = 0
-        #     refine_mask = torch.from_numpy(
-        #         cv2.dilate(refine_mask[0, 0].detach().cpu().numpy(), np.ones((31, 31), np.uint8))).to(
-        #         mask.device).unsqueeze(0).unsqueeze(0)
-        #     refine_mask[mask == 0] = 0
-        #     # Don't use bad angles here
-        #     refine_mask[z_normals < 0.4] = 0
-        # else:
-        #     # Update all regions inside the object
-        #     refine_mask[mask == 0] = 0
+            # elif self.cfg.guide.reference_texture is not None:
+            #     refine_mask[edited_mask == 0] = 0
+            #     refine_mask = torch.from_numpy(
+            #         cv2.dilate(refine_mask[0, 0].detach().cpu().numpy(), np.ones((31, 31), np.uint8))).to(
+            #         mask.device).unsqueeze(0).unsqueeze(0)
+            #     refine_mask[mask == 0] = 0
+            #     # Don't use bad angles here
+            #     refine_mask[z_normals < 0.4] = 0
+            # else:
+            #     # Update all regions inside the object
+            #     refine_mask[mask == 0] = 0
 
-        # refine_mask = torch.from_numpy(
-        #     cv2.erode(refine_mask[0, 0].detach().cpu().numpy(), np.ones((5, 5), np.uint8))).to(
-        #     mask.device).unsqueeze(0).unsqueeze(0)
-        # refine_mask = torch.from_numpy(
-        #     cv2.dilate(refine_mask[0, 0].detach().cpu().numpy(), np.ones((5, 5), np.uint8))).to(
-        #     mask.device).unsqueeze(0).unsqueeze(0)
-        # update_mask[refine_mask == 1] = 1
+            if self.cfg.guide.use_dilation:
+                refine_mask = torch.from_numpy(
+                    cv2.erode(refine_mask[0, 0].detach().cpu().numpy(), np.ones((5, 5), np.uint8))).to(
+                    mask.device).unsqueeze(0).unsqueeze(0)
+                refine_mask = torch.from_numpy(
+                    cv2.dilate(refine_mask[0, 0].detach().cpu().numpy(), np.ones((5, 5), np.uint8))).to(
+                    mask.device).unsqueeze(0).unsqueeze(0)
 
-        update_mask[object_mask == 0] = 0
+            update_mask[refine_mask == 1] = 1
+        update_mask[torch.bitwise_and(object_mask == 0, generate_mask == 0)] = 0
+        # update_mask[object_mask == 0] = 0
 
         # Visualize trimap
         if self.cfg.log.log_images:
@@ -451,8 +457,7 @@ class TEXTure:
         # Create a checkerboard grid
         checkerboard[:, :, ::2, ::2] = 0
         checkerboard[:, :, 1::2, 1::2] = 0
-        checkerboard = F.interpolate(checkerboard,
-                                     (512, 512))
+        checkerboard = F.interpolate(checkerboard, (512, 512))
         checker_mask = F.interpolate(update_mask, (512, 512))
         only_old_mask = F.interpolate(torch.bitwise_and(refine_mask == 1,
                                                         generate_mask == 0).float(), (512, 512))
