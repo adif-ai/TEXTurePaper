@@ -253,40 +253,7 @@ class TEXTure:
         logger.info(f'text: {prompt}')
         logger.info(f'negative text: {self.cfg.guide.negative_text}')
 
-        if self.paint_step == 1:
-            # pre-diffusion
-            controlnets = [
-                sd_webui_modules.depth_controlnet(
-                    control_image=self.tensor_to_pil(resized_depth_render),
-                    is_depth_map=True,
-                ),
-            ]
-
-            if self.reference_image is not None:
-                controlnets.append(
-                    sd_webui_modules.reference_controlnet(
-                        control_image=self.reference_image,
-                        style_fidelity=self.cfg.guide.style_fidelity,
-                    )
-                )
-            
-            pre_output = sd_webui_modules.txt2img_wrapper(
-                prompt=prompt,
-                negative_prompt=self.cfg.guide.negative_text,
-                controlnets=controlnets,
-                seed=self.seed,
-                steps=self.cfg.optim.steps,
-            )[0]
-            
-            pre_output = np.array(pre_output)
-            pre_output = pre_output[None, :] # 0~255 uint8 
-            pre_output = np.array(pre_output).astype(np.float32) / 255.0
-            pre_output = pre_output.transpose(0, 3, 1, 2) # batch, channel, width, height, 0~1
-            pre_output = torch.from_numpy(pre_output).to(self.device)
-            
-            # alternate mask region with pre output
-            resized_rgb_render = resized_rgb_render * (1-resized_update_render) + pre_output * resized_update_render
-        else:
+        if self.paint_step > 1 and self.cfg.guide.use_refine and self.cfg.guide.use_checkerboard:
             if self.cfg.guide.use_refine and self.cfg.guide.use_checkerboard:
                 checker_mask = self.generate_checkerboard(crop(update_mask), crop(refine_mask),
                                                         crop(generate_mask))
@@ -294,8 +261,6 @@ class TEXTure:
                                     'checkerboard_input')
                 resized_update_render = resized_update_render + torch.cat(3 * [F.interpolate(checker_mask, size=(512, 512))], dim=1)
                 resized_update_render[resized_update_render > 1] = 1
-        self.log_train_image(resized_rgb_render, name='input_image')
-        self.log_train_image(resized_depth_render, name='input_depth')
 
         # make output with inpainting
         controlnets = [
@@ -313,7 +278,18 @@ class TEXTure:
                     style_fidelity=self.cfg.guide.style_fidelity,
                 )
             )
-
+            
+            logger.info(f'change inpainting fill setting to original and update mask region with reference image')
+            self.cfg.guide.inpainting_fill = 1
+            
+            ref_image = np.array(self.reference_image.resize((512,512))).astype(np.float32) / 255.0
+            ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
+            ref_image = torch.from_numpy(ref_image).to(self.device)
+            
+            resized_rgb_render = resized_rgb_render * (1-resized_update_render) + ref_image * resized_update_render           
+        
+        self.log_train_image(resized_rgb_render, name='input_image')
+        self.log_train_image(resized_depth_render, name='input_depth')
         pil_output = sd_webui_modules.img2img_inpaint_wrapper(
             prompt=prompt,
             negative_prompt=self.cfg.guide.negative_text,
@@ -322,6 +298,8 @@ class TEXTure:
             controlnets=controlnets,
             seed=self.seed,
             steps=self.cfg.optim.steps,
+            inpainting_fill=self.cfg.guide.inpainting_fill,
+            mask_blur=0,
         )[0]
         pil_output.save(self.train_renders_path / f'{self.paint_step:04d}_direct_output.jpg')
 
@@ -497,7 +475,7 @@ class TEXTure:
         if self.cfg.guide.strict_projection:
             blurred_render_update_mask[blurred_render_update_mask < 0.5] = 0
             # Do not use bad normals
-            z_was_better = z_normals + self.cfg.guide.z_update_thr < z_normals_cache[:, :1, :, :]
+            z_was_better = z_normals + 0.2 < z_normals_cache[:, :1, :, :]
             blurred_render_update_mask[z_was_better] = 0
 
         render_update_mask = blurred_render_update_mask

@@ -24,9 +24,9 @@ class RenderConfig:
     # Theta value for rendering during training
     base_theta:float = 60
     # Additional views to use before rotating around shape
-    views_before: List[Tuple[float,float]] = field(default_factory=list)
+    views_before: List[Tuple[float,float]] = field(default_factory=[[180,1],[180,179]].copy)
     # Additional views to use after rotating around shape
-    views_after: List[Tuple[float, float]] = field(default_factory=[[180,30],[180,150]].copy)
+    views_after: List[Tuple[float, float]] = field(default_factory=[[180,1],[180,150], [0,150]].copy)
     # Whether to alternate between the rotating views from the different sides
     alternate_views: bool = True
 
@@ -87,6 +87,8 @@ class GuideConfig:
     use_dilation: bool = True
     # Checkerboard masking
     use_checkerboard: bool = True
+    # Masked content 0: fill / 1: original / 2: latent noise / 3: latent 
+    inpainting_fill: int = 0
 
 
 @dataclass
