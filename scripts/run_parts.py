@@ -3,6 +3,7 @@ import os
 from glob import glob
 import traceback
 from loguru import logger
+import copy
 
 
 assets = glob("./shapes/ai/*.obj")
@@ -18,7 +19,7 @@ default_config_dict = {
         "use_dilation": False,
         "use_checkerboard": False,
         "append_direction": True,
-        "inpainting_fill": 1,
+        "inpainting_fill": 2,
     },
     "optim": {"seed": 3, "steps": 20},
 }
@@ -33,7 +34,7 @@ for sd_model in sd_models:
             try:
                 prompt = f"{os.path.basename(asset).split('_')[0].replace('.obj', '')}, {'{}'} view, {concept}"
 
-                config_dict = default_config_dict.copy()
+                config_dict = copy.deepcopy(default_config_dict)
                 config_dict["log"].update(
                     {"exp_root": exp_path, "exp_name": f"{os.path.basename(asset)}"}
                 )
@@ -47,7 +48,7 @@ for sd_model in sd_models:
                 )
 
                 if not os.path.exists(
-                    f"{exp_path}/{os.path.basename(asset)}/results/step_00010_rgb.mp4"
+                    os.path.join(exp_path, os.path.basename(asset), "mesh", "mesh.obj")
                 ):
                     config_path = "configs/text_guided/tmp.yaml"
                     with open("configs/text_guided/tmp.yaml", "w") as f:
@@ -75,7 +76,7 @@ for sd_model in sd_models:
         for asset in assets:
             try:
                 prompt = f"{os.path.basename(asset).split('_')[0].replace('.obj', '')}, {'{}'} view, {concept}"
-                config_dict = default_config_dict.copy()
+                config_dict = copy.deepcopy(default_config_dict)
                 config_dict["log"].update(
                     {"exp_root": exp_path, "exp_name": f"{os.path.basename(asset)}"}
                 )
@@ -88,7 +89,7 @@ for sd_model in sd_models:
                 )
 
                 if not os.path.exists(
-                    f"{exp_path}/{os.path.basename(asset)}/results/step_00010_rgb.mp4"
+                    os.path.join(exp_path, os.path.basename(asset), "mesh", "mesh.obj")
                 ):
                     config_path = "configs/text_guided/tmp.yaml"
                     with open("configs/text_guided/tmp.yaml", "w") as f:
