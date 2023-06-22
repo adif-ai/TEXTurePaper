@@ -298,7 +298,9 @@ class TexturedMeshModel(nn.Module):
         return [self.background_sphere_colors, self.texture_img, self.meta_texture_img]
 
     @torch.no_grad()
-    def export_mesh(self, path):
+    def export_mesh(self, path, denormalize=True):
+        if denormalize:
+            self.mesh.denormalize_mesh(inplace=True, target_scale=self.mesh_scale, dy=self.dy)
         v, f = self.mesh.vertices, self.mesh.faces.int()
         h0, w0 = 256, 256
         ssaa, name = 1, ''
@@ -326,20 +328,20 @@ class TexturedMeshModel(nn.Module):
         obj_file = os.path.join(path, f'{name}mesh.obj')
         mtl_file = os.path.join(path, f'{name}mesh.mtl')
 
-        logger.info('writing obj mesh to {obj_file}')
+        logger.info(f'writing obj mesh to {obj_file}')
         with open(obj_file, "w") as fp:
             fp.write(f'mtllib {name}mesh.mtl \n')
 
-            logger.info('writing vertices {v_np.shape}')
+            logger.info(f'writing vertices {v_np.shape}')
             for v in v_np:
-                fp.write(f'v {v[0]} {v[1]} {v[2]} \n')
+                fp.write('v %.6f %.6f %.6f \n' % tuple(v))
 
-            logger.info('writing vertices texture coords {vt_np.shape}')
+            logger.info(f'writing vertices texture coords {vt_np.shape}')
             for v in vt_np:
                 # fp.write(f'vt {v[0]} {1 - v[1]} \n')
-                fp.write(f'vt {v[0]} {v[1]} \n')
+                fp.write('vt %.6f %.6f \n' % tuple(v))
 
-            logger.info('writing faces {f_np.shape}')
+            logger.info(f'writing faces {f_np.shape}')
             fp.write(f'usemtl mat0 \n')
             for i in range(len(f_np)):
                 fp.write(

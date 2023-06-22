@@ -55,11 +55,22 @@ class Mesh:
 
         verts = mesh.vertices
         center = verts.mean(dim=0)
+        self.center = center
         verts = verts - center
         scale = torch.max(torch.norm(verts, p=2, dim=1))
+        self.scale = scale
         verts = verts / scale
         verts *= target_scale
         verts[:, 1] += dy
         mesh.vertices = verts
         return mesh
 
+    def denormalize_mesh(self, inplace=False, target_scale=1, dy=0):
+        mesh = self if inplace else copy.deepcopy(self)
+        verts = mesh.vertices
+        verts[:, 1] -= dy
+        verts = verts / target_scale
+        verts = verts * self.scale
+        verts = verts + self.center
+        mesh.vertices = verts
+        return mesh
