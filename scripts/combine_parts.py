@@ -26,7 +26,12 @@ def combine_parts(
     parts_images = []
     for i in parts_mask_paths:
         if i is not None:
-            parts_images.append(np.array(load_image(i)).astype(np.float32) / 255.0)
+            parts_images.append(
+                np.array(
+                    load_image(i).resize((uv_images[0].shape[0], uv_images[0].shape[1]))
+                ).astype(np.float32)
+                / 255.0
+            )
     rest_part = np.zeros_like(parts_images[0])
     for i in parts_images:
         rest_part += i
@@ -63,15 +68,73 @@ def combine_parts(
 
 
 if __name__ == "__main__":
+    # combine_parts(
+    #     obj_path="experiments/0621/gold_table_inpaint1_white_room_ref/mesh/mesh.obj",
+    #     mtl_path="experiments/0621/gold_table_inpaint1_white_room_ref/mesh/mesh.mtl",
+    #     png_paths=[
+    #         "experiments/0621/gold_table_inpaint1_white_room_ref/mesh/albedo.png",
+    #         "experiments/0621/spanish_tile_table_ref/mesh/albedo.png",
+    #     ],
+    #     parts=["leg", "top"],
+    #     parts_mask_paths=["Table_002_leg.png"],
+    #     concepts=["gold", "spanish tile"],
+    #     output_dir="table_parts",
+    # )
+    from glob import glob
+
+    # Table
+    png_paths = glob("results/reference/*/Table_*/mesh/*.png")
+    obj_path = os.path.join(os.path.dirname(png_paths[0]), "mesh.obj")
+    mtl_path = os.path.join(os.path.dirname(png_paths[0]), "mesh.mtl")
+    parts = ["leg", "top"]
+    parts_mask_paths = ["shapes/ai/Table_002_leg.png"]
+    concepts = [i.split("/")[2] for i in png_paths]
+    output_dir = "parts_combination/Table_002"
+
     combine_parts(
-        obj_path="experiments/0621/gold_table_inpaint1_white_room_ref/mesh/mesh.obj",
-        mtl_path="experiments/0621/gold_table_inpaint1_white_room_ref/mesh/mesh.mtl",
-        png_paths=[
-            "experiments/0621/gold_table_inpaint1_white_room_ref/mesh/albedo.png",
-            "experiments/0621/spanish_tile_table_ref/mesh/albedo.png",
-        ],
-        parts=["leg", "top"],
-        parts_mask_paths=["Table_002_leg.png"],
-        concepts=["gold", "spanish tile"],
-        output_dir="table_parts",
+        obj_path=obj_path,
+        mtl_path=mtl_path,
+        png_paths=png_paths,
+        parts=parts,
+        parts_mask_paths=parts_mask_paths,
+        concepts=concepts,
+        output_dir=output_dir,
+    )
+
+    # Chair
+    png_paths = glob("results/reference/*/Chair_*/mesh/*.png")
+    obj_path = os.path.join(os.path.dirname(png_paths[0]), "mesh.obj")
+    mtl_path = os.path.join(os.path.dirname(png_paths[0]), "mesh.mtl")
+    parts = ["seat", "leg"]
+    parts_mask_paths = ["shapes/ai/Chair_002_seat.png"]
+    concepts = [i.split("/")[2] for i in png_paths]
+    output_dir = "parts_combination/Chair_002"
+
+    combine_parts(
+        obj_path=obj_path,
+        mtl_path=mtl_path,
+        png_paths=png_paths,
+        parts=parts,
+        parts_mask_paths=parts_mask_paths,
+        concepts=concepts,
+        output_dir=output_dir,
+    )
+
+    # Sofa
+    png_paths = glob("results/reference/*/sofa_*/mesh/*.png")
+    obj_path = os.path.join(os.path.dirname(png_paths[0]), "mesh.obj")
+    mtl_path = os.path.join(os.path.dirname(png_paths[0]), "mesh.mtl")
+    parts = ["leg", "pillow", "seat"]
+    parts_mask_paths = ["shapes/ai/sofa_001_leg.png", "shapes/ai/sofa_001_pillow.png"]
+    concepts = [i.split("/")[2] for i in png_paths]
+    output_dir = "parts_combination/sofa_001"
+
+    combine_parts(
+        obj_path=obj_path,
+        mtl_path=mtl_path,
+        png_paths=png_paths,
+        parts=parts,
+        parts_mask_paths=parts_mask_paths,
+        concepts=concepts,
+        output_dir=output_dir,
     )
