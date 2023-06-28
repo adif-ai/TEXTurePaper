@@ -238,6 +238,9 @@ class TEXTure:
                 align_corners=False,
             )
 
+        if self.paint_step > 1:
+            self.mesh_model.change_default_to_median()
+
         # Render from viewpoint
         outputs = self.mesh_model.render(
             theta=theta, phi=phi, radius=radius, background=background
@@ -768,45 +771,7 @@ class TEXTure:
         z_normals: torch.Tensor,
         z_normals_cache: torch.Tensor,
     ):
-        object_mask = (
-            torch.from_numpy(
-                cv2.erode(
-                    object_mask[0, 0].detach().cpu().numpy(), np.ones((5, 5), np.uint8)
-                )
-            )
-            .to(object_mask.device)
-            .unsqueeze(0)
-            .unsqueeze(0)
-        )
-        render_update_mask = object_mask.clone()
-
-        render_update_mask[update_mask == 0] = 0
-
-        blurred_render_update_mask = (
-            torch.from_numpy(
-                cv2.dilate(
-                    render_update_mask[0, 0].detach().cpu().numpy(),
-                    np.ones((25, 25), np.uint8),
-                )
-            )
-            .to(render_update_mask.device)
-            .unsqueeze(0)
-            .unsqueeze(0)
-        )
-        blurred_render_update_mask = utils.gaussian_blur(
-            blurred_render_update_mask, 21, 16
-        )
-
-        # Do not get out of the object
-        blurred_render_update_mask[object_mask == 0] = 0
-
-        if self.cfg.guide.strict_projection:
-            blurred_render_update_mask[blurred_render_update_mask < 0.5] = 0
-            # Do not use bad normals
-            z_was_better = z_normals + 0.2 < z_normals_cache[:, :1, :, :]
-            blurred_render_update_mask[z_was_better] = 0
-
-        render_update_mask = blurred_render_update_mask
+        render_update_mask = object_mask
         self.log_train_image(rgb_output * render_update_mask, "project_back_input")
 
         # Update the normals
