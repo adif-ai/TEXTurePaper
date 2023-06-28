@@ -287,19 +287,28 @@ class TEXTure:
         crop = lambda x: x[:, :, min_h:max_h, min_w:max_w]
         cropped_rgb_render = crop(rgb_render)
         resized_rgb_render = F.interpolate(
-            cropped_rgb_render, (512, 512), mode="bilinear", align_corners=False
+            cropped_rgb_render,
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+            mode="bilinear",
+            align_corners=False,
         )
 
         cropped_depth_render = crop(depth_render)
         cropped_depth_render = torch.cat(3 * [cropped_depth_render], dim=1)
         resized_depth_render = F.interpolate(
-            cropped_depth_render, (512, 512), mode="bilinear", align_corners=False
+            cropped_depth_render,
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+            mode="bilinear",
+            align_corners=False,
         )
 
         cropped_update_mask = crop(update_mask)
         cropped_update_mask = torch.cat(3 * [cropped_update_mask], dim=1)
         resized_update_render = F.interpolate(
-            cropped_update_mask, (512, 512), mode="bilinear", align_corners=False
+            cropped_update_mask,
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+            mode="bilinear",
+            align_corners=False,
         )
 
         self.log_train_image(cropped_rgb_render, name="cropped_input")
@@ -327,11 +336,28 @@ class TEXTure:
                     crop(update_mask), crop(refine_mask), crop(generate_mask)
                 )
                 self.log_train_image(
-                    F.interpolate(cropped_rgb_render, (512, 512)) * (1 - checker_mask),
+                    F.interpolate(
+                        cropped_rgb_render,
+                        (
+                            self.cfg.guide.image_resolution,
+                            self.cfg.guide.image_resolution,
+                        ),
+                    )
+                    * (1 - checker_mask),
                     "checkerboard_input",
                 )
                 resized_update_render = resized_update_render + torch.cat(
-                    3 * [F.interpolate(checker_mask, size=(512, 512))], dim=1
+                    3
+                    * [
+                        F.interpolate(
+                            checker_mask,
+                            size=(
+                                self.cfg.guide.image_resolution,
+                                self.cfg.guide.image_resolution,
+                            ),
+                        )
+                    ],
+                    dim=1,
                 )
                 resized_update_render[resized_update_render > 1] = 1
 
@@ -345,6 +371,8 @@ class TEXTure:
             ]
 
             pre_output = sd_webui_modules.txt2img_wrapper(
+                width=self.cfg.guide.image_resolution,
+                height=self.cfg.guide.image_resolution,
                 prompt=prompt,
                 negative_prompt=self.cfg.guide.negative_text,
                 controlnets=controlnets,
@@ -382,19 +410,14 @@ class TEXTure:
             self.cfg.guide.inpainting_fill = 1
 
             ref_image = (
-                np.array(self.reference_image.resize((512, 512))).astype(np.float32)
-                / 255.0
-            )
-            ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
-            ref_image = torch.from_numpy(ref_image).to(self.device)
-
-            resized_rgb_render = (
-                resized_rgb_render * (1 - resized_update_render)
-                + ref_image * resized_update_render
-            )
-
-            ref_image = (
-                np.array(self.reference_image.resize((512, 512))).astype(np.float32)
+                np.array(
+                    self.reference_image.resize(
+                        (
+                            self.cfg.guide.image_resolution,
+                            self.cfg.guide.image_resolution,
+                        )
+                    )
+                ).astype(np.float32)
                 / 255.0
             )
             ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
@@ -453,6 +476,8 @@ class TEXTure:
             )
 
         pil_output = sd_webui_modules.img2img_inpaint_wrapper(
+            width=self.cfg.guide.image_resolution,
+            height=self.cfg.guide.image_resolution,
             prompt=prompt,
             negative_prompt=self.cfg.guide.negative_text,
             init_img=self.tensor_to_pil(resized_rgb_render),
@@ -718,10 +743,17 @@ class TEXTure:
         # Create a checkerboard grid
         checkerboard[:, :, ::2, ::2] = 0
         checkerboard[:, :, 1::2, 1::2] = 0
-        checkerboard = F.interpolate(checkerboard, (512, 512))
-        checker_mask = F.interpolate(update_mask, (512, 512))
+        checkerboard = F.interpolate(
+            checkerboard,
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+        )
+        checker_mask = F.interpolate(
+            update_mask,
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+        )
         only_old_mask = F.interpolate(
-            torch.bitwise_and(refine_mask == 1, generate_mask == 0).float(), (512, 512)
+            torch.bitwise_and(refine_mask == 1, generate_mask == 0).float(),
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
         )
         checker_mask[only_old_mask == 1] = checkerboard[only_old_mask == 1]
         return checker_mask
