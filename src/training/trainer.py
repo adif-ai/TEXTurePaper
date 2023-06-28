@@ -400,9 +400,27 @@ class TEXTure:
             ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
             ref_image = torch.from_numpy(ref_image).to(self.device)
 
+            dilated_update_mask = self.dilate(resized_update_render, 10)
+            object_mask = torch.ones_like(resized_rgb_render)
+            object_mask[resized_depth_render == 0] = 0
+            object_mask = (
+                torch.from_numpy(
+                    cv2.erode(
+                        object_mask[0, 0].detach().cpu().numpy(),
+                        np.ones((3, 3), np.uint8),
+                    )
+                )
+                .to(object_mask.device)
+                .unsqueeze(0)
+                .unsqueeze(0)
+            )
+
+            dilated_update_mask[object_mask == 1] = 0
+            dilated_update_mask[resized_update_render[:, :1, :, :] == 1] = 1
+
             resized_rgb_render = (
-                resized_rgb_render * (1 - resized_update_render)
-                + ref_image * resized_update_render
+                resized_rgb_render * (1 - dilated_update_mask)
+                + ref_image * dilated_update_mask
             )
 
             # # replace background image
