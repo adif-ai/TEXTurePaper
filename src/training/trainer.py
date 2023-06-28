@@ -253,6 +253,7 @@ class TEXTure:
         logger.info(f'text: {prompt}')
         logger.info(f'negative text: {self.cfg.guide.negative_text}')
 
+        # checkerboard
         if self.paint_step > 1 and self.cfg.guide.use_refine and self.cfg.guide.use_checkerboard:
             if self.cfg.guide.use_refine and self.cfg.guide.use_checkerboard:
                 checker_mask = self.generate_checkerboard(crop(update_mask), crop(refine_mask),
@@ -261,6 +262,80 @@ class TEXTure:
                                     'checkerboard_input')
                 resized_update_render = resized_update_render + torch.cat(3 * [F.interpolate(checker_mask, size=(512, 512))], dim=1)
                 resized_update_render[resized_update_render > 1] = 1
+
+        if self.reference_image is None:
+            # pre-diffusion
+            controlnets = [
+                sd_webui_modules.depth_controlnet(
+                    control_image=self.tensor_to_pil(resized_depth_render),
+                    is_depth_map=True,
+                ),
+            ]
+
+            pre_output = sd_webui_modules.txt2img_wrapper(
+                prompt=prompt,
+                negative_prompt=self.cfg.guide.negative_text,
+                controlnets=controlnets,
+                seed=self.seed,
+                steps=self.cfg.optim.steps,
+            )[0]
+            
+            pre_output = np.array(pre_output)
+            pre_output = pre_output[None, :] # 0~255 uint8 
+            pre_output = np.array(pre_output).astype(np.float32) / 255.0
+            pre_output = pre_output.transpose(0, 3, 1, 2) # batch, channel, width, height, 0~1
+            pre_output = torch.from_numpy(pre_output).to(self.device)
+            
+            self.cfg.guide.inpainting_fill = 1
+        
+            resized_rgb_render = (
+                    resized_rgb_render * (1 - resized_update_render)
+                    + pre_output * resized_update_render
+                )
+            
+            # replace background image
+            object_mask = torch.ones_like(resized_rgb_render)
+            object_mask[resized_depth_render == 0] = 0
+            
+            resized_rgb_render = (
+                    resized_rgb_render * object_mask
+                    + pre_output * (1 - object_mask)
+                )
+        
+        else:
+            
+            logger.info(f'change inpainting fill setting to original and update mask region with reference image')
+            self.cfg.guide.inpainting_fill = 1
+            
+            ref_image = np.array(self.reference_image.resize((512,512))).astype(np.float32) / 255.0
+            ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
+            ref_image = torch.from_numpy(ref_image).to(self.device)
+            
+            resized_rgb_render = resized_rgb_render * (1-resized_update_render) + ref_image * resized_update_render           
+        
+            ref_image = (
+                np.array(self.reference_image.resize((512, 512))).astype(np.float32)
+                / 255.0
+            )
+            ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
+            ref_image = torch.from_numpy(ref_image).to(self.device)
+
+            resized_rgb_render = (
+                resized_rgb_render * (1 - resized_update_render)
+                + ref_image * resized_update_render
+            )
+            
+            # # replace background image
+            # object_mask = torch.ones_like(resized_rgb_render)
+            # object_mask[resized_depth_render == 0] = 0
+            
+            # resized_rgb_render = (
+            #         resized_rgb_render * object_mask
+            #         + ref_image * (1 - object_mask)
+            #     )
+
+        self.log_train_image(resized_rgb_render, name="input_image")
+        self.log_train_image(resized_depth_render, name="input_depth")
 
         # make output with inpainting
         controlnets = [
@@ -278,18 +353,8 @@ class TEXTure:
                     style_fidelity=self.cfg.guide.style_fidelity,
                 )
             )
-            
-            logger.info(f'change inpainting fill setting to original and update mask region with reference image')
-            self.cfg.guide.inpainting_fill = 1
-            
-            ref_image = np.array(self.reference_image.resize((512,512))).astype(np.float32) / 255.0
-            ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
-            ref_image = torch.from_numpy(ref_image).to(self.device)
-            
-            resized_rgb_render = resized_rgb_render * (1-resized_update_render) + ref_image * resized_update_render           
+
         
-        self.log_train_image(resized_rgb_render, name='input_image')
-        self.log_train_image(resized_depth_render, name='input_depth')
         pil_output = sd_webui_modules.img2img_inpaint_wrapper(
             prompt=prompt,
             negative_prompt=self.cfg.guide.negative_text,
