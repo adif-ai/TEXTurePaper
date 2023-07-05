@@ -406,6 +406,36 @@ class TEXTure:
                 1 - object_mask
             )
 
+            # add color to boundary
+            if self.paint_step > 1:
+                object_mask = torch.ones_like(resized_rgb_render)
+                object_mask[resized_depth_render == 0] = 0
+
+                object_mask = (
+                    torch.from_numpy(
+                        cv2.erode(
+                            object_mask[0, 0].detach().cpu().numpy(),
+                            np.ones((3, 3), np.uint8),
+                        )
+                    )
+                    .to(object_mask.device)
+                    .unsqueeze(0)
+                    .unsqueeze(0)
+                )
+
+                boundary_mask = self.dilate(object_mask, 10)
+
+                # boundary_mask[object_mask[:, :1, :, :] == 1] = 0
+                boundary_mask[object_mask == 1] = 0
+
+                resized_rgb_render = (
+                    resized_rgb_render * (1 - boundary_mask)
+                    + self.mesh_model.median_color.unsqueeze(0)
+                    .unsqueeze(-1)
+                    .unsqueeze(-1)
+                    .expand_as(resized_rgb_render)
+                    * boundary_mask
+                )
         else:
             logger.info(
                 f"change inpainting fill setting to original and update mask region with reference image"
@@ -598,12 +628,15 @@ class TEXTure:
         edited_mask: torch.Tensor,
         mask: torch.Tensor,
     ):
+        default_color = (
+            self.mesh_model.default_color
+            if self.mesh_model.median_color is None
+            else self.mesh_model.median_color
+        )
         diff = (
             (
                 rgb_render_raw.detach()
-                - torch.tensor(self.mesh_model.default_color)
-                .view(1, 3, 1, 1)
-                .to(self.device)
+                - torch.tensor(default_color).view(1, 3, 1, 1).to(self.device)
             )
             .abs()
             .sum(axis=1)

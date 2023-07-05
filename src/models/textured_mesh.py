@@ -143,6 +143,7 @@ class TexturedMeshModel(nn.Module):
         self._L = None
         self._eigenvalues = None
         self._eigenvectors = None
+        self.median_color = None
 
     @property
     def L(self) -> np.ndarray:
@@ -247,6 +248,7 @@ class TexturedMeshModel(nn.Module):
             self.device)).abs().sum(axis=1)
         default_mask = (diff < 0.1).float().unsqueeze(0)
         median_color = self.texture_img[0, :].reshape(3, -1)[:, default_mask.flatten() == 0].mean(axis=1)
+        self.median_color = median_color 
         with torch.no_grad():
             self.texture_img.reshape(3, -1)[:, default_mask.flatten() == 1] = median_color.reshape(-1, 1)
 
