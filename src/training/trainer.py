@@ -391,8 +391,6 @@ class TEXTure:
             )  # batch, channel, width, height, 0~1
             pre_output = torch.from_numpy(pre_output).to(self.device)
 
-            self.cfg.guide.inpainting_fill = 1
-
             resized_rgb_render = (
                 resized_rgb_render * (1 - resized_update_render)
                 + pre_output * resized_update_render
@@ -440,7 +438,6 @@ class TEXTure:
             logger.info(
                 f"change inpainting fill setting to original and update mask region with reference image"
             )
-            self.cfg.guide.inpainting_fill = 1
 
             ref_image = (
                 np.array(
@@ -518,7 +515,7 @@ class TEXTure:
             controlnets=controlnets,
             seed=self.seed,
             steps=self.cfg.optim.steps,
-            inpainting_fill=self.cfg.guide.inpainting_fill,
+            inpainting_fill=1,
             mask_blur=0,
         )[0]
         pil_output.save(

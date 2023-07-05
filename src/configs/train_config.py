@@ -88,7 +88,7 @@ class GuideConfig:
     # Checkerboard masking
     use_checkerboard: bool = True
     # Masked content 0: fill / 1: original / 2: latent noise / 3: latent 
-    inpainting_fill: int = 0
+    # inpainting_fill: int = 0
     # Stabld Diffusion resolution
     image_resolution: int = 512
 
