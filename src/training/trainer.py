@@ -318,14 +318,10 @@ class TEXTure:
         self.log_train_image(cropped_rgb_render, name="cropped_input")
 
         # text embeddings
-        if self.cfg.guide.append_direction:
-            dirs = data["dir"]  # [B,]
-            view = self.view_dirs[dirs]
-            text = self.cfg.guide.text.format(view)
-            prompt = text + ", " + self.cfg.guide.added_text
-        else:
-            prompt = self.cfg.guide.text + ", " + self.cfg.guide.added_text
-
+        dirs = data["dir"] 
+        view = self.view_dirs[dirs]
+        prompt = self.cfg.guide.text + ", " + self.cfg.guide.added_text.format(view)
+        
         logger.info(f"text: {prompt}")
         logger.info(f"negative text: {self.cfg.guide.negative_text}")
 
