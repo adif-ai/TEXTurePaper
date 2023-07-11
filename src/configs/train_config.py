@@ -8,7 +8,7 @@ from loguru import logger
 class RenderConfig:
     """ Parameters for the Mesh Renderer """
     # Grid size for rendering during painting
-    train_grid_size: int = 1200
+    train_grid_size: int = 2048
     # Grid size of evaluation
     eval_grid_size: int = 1024
     # training camera radius range
@@ -26,7 +26,7 @@ class RenderConfig:
     # Additional views to use before rotating around shape
     views_before: List[Tuple[float,float]] = field(default_factory=[[180,1],[180,179]].copy)
     # Additional views to use after rotating around shape
-    views_after: List[Tuple[float, float]] = field(default_factory=[[180,1],[180,150], [0,150]].copy)
+    views_after: List[Tuple[float, float]] = field(default_factory=[[180,150], [0,150]].copy)
     # Whether to alternate between the rotating views from the different sides
     alternate_views: bool = True
 
@@ -40,18 +40,14 @@ class GuideConfig:
     # Guiding negative text prompt
     negative_text: str = "longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality"
     # The mesh to paint
-    shape_path: str = 'shapes/spot_triangulated.obj'
+    shape_path: str = None
     # Append direction to text prompts
     append_direction: bool = True
     # Reference image Path
     reference_image_path: str = None
     # Refererence style fidelity
     style_fidelity: float = 0.5
-    # A Textual-Inversion concept to use
-    concept_name: Optional[str] = None
-    # Path to the TI embedding
-    concept_path: Optional[Path] = None
-    # A huggingface diffusion model to use
+    # diffusion model to use
     diffusion_name: str = "v1-5-pruned-emaonly.safetensors"
     # Scale of mesh in 1x1x1 cube
     shape_scale: float = 0.6
@@ -61,10 +57,6 @@ class GuideConfig:
     texture_resolution: int = 1024
     # texture mapping interpolation mode from texture image, options: 'nearest', 'bilinear', 'bicubic'
     texture_interpolation_mode: str= 'bilinear'
-    # Guidance scale for score distillation
-    guidance_scale: float = 7.5
-    # Use inpainting in relevant iterations
-    use_inpainting: bool = True
     # The texture before editing
     reference_texture: Optional[Path] = None
     # The edited texture
@@ -76,19 +68,15 @@ class GuideConfig:
     # Threshold for defining refine regions
     z_update_thr: float = 0.5
     # Use absolute threshold (use difference between z_normals_cache if False)
-    z_update_abs: bool = True
+    z_update_abs: bool = False
     # # Accumulate z_normals_cache (use previous value if False)
     # z_cache_accumulate: bool = True
     # Some more strict masking for projecting back
-    strict_projection: bool = True
-    # Apply refine mask (Full inpainting if False)
     use_refine: bool = True
     # Mask dilation
     use_dilation: bool = True
     # Checkerboard masking
-    use_checkerboard: bool = True
-    # Masked content 0: fill / 1: original / 2: latent noise / 3: latent 
-    # inpainting_fill: int = 0
+    use_checkerboard: bool = False
     # Stabld Diffusion resolution
     image_resolution: int = 512
 
