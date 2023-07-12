@@ -26,7 +26,7 @@ class RenderConfig:
     # Additional views to use before rotating around shape
     views_before: List[Tuple[float,float]] = field(default_factory=[[180,1],[180,179]].copy)
     # Additional views to use after rotating around shape
-    views_after: List[Tuple[float, float]] = field(default_factory=[[180,150], [0,150]].copy)
+    views_after: List[Tuple[float, float]] = field(default_factory=[[180,1], [180,150], [0,150]].copy)
     # Whether to alternate between the rotating views from the different sides
     alternate_views: bool = True
 
@@ -66,9 +66,7 @@ class GuideConfig:
     # Threshold for defining refine regions
     z_update_thr: float = 0.5
     # Use absolute threshold (use difference between z_normals_cache if False)
-    z_update_abs: bool = False
-    # # Accumulate z_normals_cache (use previous value if False)
-    # z_cache_accumulate: bool = True
+    z_update_abs: bool = True
     # Some more strict masking for projecting back
     use_refine: bool = True
     # Mask dilation

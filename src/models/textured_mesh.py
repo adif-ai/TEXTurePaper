@@ -381,6 +381,7 @@ class TexturedMeshModel(nn.Module):
             default_mask = (diff < 0.1).float().unsqueeze(0)
             median_color = texture_img[0, :].reshape(3, -1)[:, default_mask.flatten() == 0].mean(
                 axis=1)
+            self.median_color = median_color
             texture_img = texture_img.clone()
             with torch.no_grad():
                 texture_img.reshape(3, -1)[:, default_mask.flatten() == 1] = median_color.reshape(-1, 1)

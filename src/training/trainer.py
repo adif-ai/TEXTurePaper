@@ -371,8 +371,8 @@ class TEXTure:
             ]
 
             pre_output = sd_webui_modules.txt2img_wrapper(
-                width=self.cfg.guide.image_resolution,
-                height=self.cfg.guide.image_resolution,
+                width=512,
+                height=512,
                 prompt=prompt,
                 negative_prompt=self.cfg.guide.negative_text,
                 controlnets=controlnets,
@@ -388,17 +388,16 @@ class TEXTure:
             )  # batch, channel, width, height, 0~1
             pre_output = torch.from_numpy(pre_output).to(self.device)
 
+            pre_output = F.interpolate(
+                pre_output,
+                (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+                mode="bilinear",
+                align_corners=False,
+            )
+
             resized_rgb_render = (
                 resized_rgb_render * (1 - resized_update_render)
                 + pre_output * resized_update_render
-            )
-
-            # replace background image
-            object_mask = torch.ones_like(resized_rgb_render)
-            object_mask[resized_depth_render == 0] = 0
-
-            resized_rgb_render = resized_rgb_render * object_mask + pre_output * (
-                1 - object_mask
             )
 
             # add color to boundary
@@ -600,15 +599,12 @@ class TEXTure:
         edited_mask: torch.Tensor,
         mask: torch.Tensor,
     ):
-        default_color = (
-            self.mesh_model.default_color
-            if self.mesh_model.median_color is None
-            else self.mesh_model.median_color
-        )
         diff = (
             (
                 rgb_render_raw.detach()
-                - torch.tensor(default_color).view(1, 3, 1, 1).to(self.device)
+                - torch.tensor(self.mesh_model.default_color)
+                .view(1, 3, 1, 1)
+                .to(self.device)
             )
             .abs()
             .sum(axis=1)
@@ -735,7 +731,7 @@ class TEXTure:
         z_normals: torch.Tensor,
         z_normals_cache: torch.Tensor,
     ):
-        render_update_mask = object_mask
+        render_update_mask = object_mask.clone()
         self.log_train_image(rgb_output * render_update_mask, "project_back_input")
 
         # Update the normals
