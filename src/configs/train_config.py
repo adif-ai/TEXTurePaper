@@ -36,9 +36,9 @@ class GuideConfig:
     # Guiding text prompt
     text: str = ""
     # Guiding added text prompt
-    added_text: str = "{} view, best quality, extremely detailed, 8k, raw photo, highres, realistic, ultra detailed"
+    added_text: str = "{} view, consistent, best quality, extremely detailed, 8k, raw photo, highres, realistic, ultra detailed"
     # Guiding negative text prompt
-    negative_text: str = "shadows, blobs, light reflections, reflections, light, lowres, extra digit, fewer digits, cropped, worst quality, low quality"
+    negative_text: str = "cracks, scratches, shadows, blobs, stain, light reflections, reflections, light, lowres, extra digit, fewer digits, cropped, worst quality, low quality"
     # The mesh to paint
     shape_path: str = None
     # Reference image Path
@@ -52,7 +52,7 @@ class GuideConfig:
     # height of mesh
     dy: float = 0.25
     # texture image resolution
-    texture_resolution: int = 1024
+    texture_resolution: int = 2048
     # texture mapping interpolation mode from texture image, options: 'nearest', 'bilinear', 'bicubic'
     texture_interpolation_mode: str= 'bilinear'
     # The texture before editing
@@ -72,11 +72,13 @@ class GuideConfig:
     # Some more strict masking for projecting back
     use_refine: bool = True
     # Mask dilation
-    use_dilation: bool = True
+    use_dilation: bool = False
     # Checkerboard masking
     use_checkerboard: bool = False
     # Stabld Diffusion resolution
-    image_resolution: int = 512
+    image_resolution: int = 1024
+    # denoising_strength
+    denoising_strength: float = 0.75
 
 
 @dataclass

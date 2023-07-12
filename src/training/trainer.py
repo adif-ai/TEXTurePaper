@@ -238,8 +238,8 @@ class TEXTure:
                 align_corners=False,
             )
 
-        if self.paint_step > 1:
-            self.mesh_model.change_default_to_median()
+        # if self.paint_step > 1:
+        #     self.mesh_model.change_default_to_median()
 
         # Render from viewpoint
         outputs = self.mesh_model.render(
@@ -318,10 +318,10 @@ class TEXTure:
         self.log_train_image(cropped_rgb_render, name="cropped_input")
 
         # text embeddings
-        dirs = data["dir"] 
+        dirs = data["dir"]
         view = self.view_dirs[dirs]
         prompt = self.cfg.guide.text + ", " + self.cfg.guide.added_text.format(view)
-        
+
         logger.info(f"text: {prompt}")
         logger.info(f"negative text: {self.cfg.guide.negative_text}")
 
@@ -491,6 +491,7 @@ class TEXTure:
             steps=self.cfg.optim.steps,
             inpainting_fill=1,
             mask_blur=0,
+            denoising_strength=self.cfg.guide.denoising_strength,
         )[0]
         pil_output.save(
             self.train_renders_path / f"{self.paint_step:04d}_direct_output.jpg"
@@ -629,45 +630,36 @@ class TEXTure:
                 .unsqueeze(0)
             )
 
-        update_mask = generate_mask.clone()
-        object_mask = torch.ones_like(update_mask)
+        object_mask = torch.ones_like(generate_mask)
         object_mask[depth_render == 0] = 0
 
         # Generate the refine mask based on the z normals, and the edited mask
 
-        refine_mask = torch.zeros_like(update_mask)
+        refine_mask = torch.zeros_like(generate_mask)
         if self.cfg.guide.use_refine:
             if self.cfg.guide.z_update_abs:
                 refine_mask[z_normals > self.cfg.guide.z_update_thr] = 1
             else:
                 refine_mask[z_normals > z_normals_cache[:, :1, :, :] + 0.1] = 1
                 refine_mask[object_mask == 0] = 0
-            refine_mask[generate_mask == 1] = 0
             if self.cfg.guide.use_dilation:
-                refine_mask = (
-                    torch.from_numpy(
-                        cv2.erode(
-                            refine_mask[0, 0].detach().cpu().numpy(),
-                            np.ones((5, 5), np.uint8),
-                        )
-                    )
-                    .to(mask.device)
-                    .unsqueeze(0)
-                    .unsqueeze(0)
-                )
                 refine_mask = (
                     torch.from_numpy(
                         cv2.dilate(
                             refine_mask[0, 0].detach().cpu().numpy(),
-                            np.ones((5, 5), np.uint8),
+                            np.ones((10, 10), np.uint8),
                         )
                     )
                     .to(mask.device)
                     .unsqueeze(0)
                     .unsqueeze(0)
                 )
+            refine_mask[generate_mask == 1] = 0
+        update_mask = generate_mask.clone()
 
+        if self.cfg.guide.use_refine:
             update_mask[refine_mask == 1] = 1
+
         update_mask[object_mask == 0] = 0
 
         # Visualize trimap
