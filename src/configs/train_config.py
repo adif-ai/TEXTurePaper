@@ -43,6 +43,7 @@ class GuideConfig:
     shape_path: str = None
     # Reference image Path
     reference_image_path: str = None
+    reference_image_repeat: int = 1
     # Refererence style fidelity
     style_fidelity: float = 0.5
     # diffusion model to use
@@ -77,6 +78,10 @@ class GuideConfig:
     image_resolution: int = 1024
     # denoising_strength
     denoising_strength: float = 0.75
+    # upscale
+    upscale: bool = False
+    upscale_resize: float = 4
+    upscaler1: int = 7
 
 
 @dataclass

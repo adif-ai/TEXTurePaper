@@ -15,6 +15,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from diffusers.utils import load_image
+import shutil
 
 from src import utils
 from src.configs.train_config import TrainConfig
@@ -58,6 +59,18 @@ class TEXTure:
 
         if self.cfg.guide.reference_image_path is not None:
             self.reference_image = load_image(self.cfg.guide.reference_image_path)
+
+            if self.cfg.guide.reference_image_repeat != 1:
+                self.reference_image = Image.fromarray(
+                    torch.tile(
+                        torch.from_numpy(np.array(self.reference_image)),
+                        (
+                            self.cfg.guide.reference_image_repeat,
+                            self.cfg.guide.reference_image_repeat,
+                            1,
+                        ),
+                    ).numpy()
+                )
         else:
             self.reference_image = None
 
@@ -144,7 +157,29 @@ class TEXTure:
         logger.info("Finished Painting ^_^")
         logger.info("Saving the last result...")
         self.full_eval()
+
+        if self.cfg.guide.upscale:
+            logger.info("Upscale UV map...")
+            self.upscale()
+
         logger.info("\tDone!")
+
+    def upscale(self):
+        uv_map = load_image(os.path.join(self.exp_path, "mesh", "albedo.png"))
+
+        upscaled_uv_map = sd_webui_modules.upscaler_wrapper(
+            image=uv_map,
+            resize=self.cfg.guide.upscale_resize,
+            upscaler1=self.cfg.guide.upscaler1,
+        )[0]
+
+        # shutil.move(
+        #     os.path.join(self.exp_path, "mesh", "albedo.png"),
+        #     os.path.join(self.exp_path, "mesh", "albedo_original.png"),
+        # )
+        os.remove(os.path.join(self.exp_path, "mesh", "albedo.png"))
+
+        upscaled_uv_map.save(os.path.join(self.exp_path, "mesh", "albedo.png"))
 
     def evaluate(
         self, dataloader: DataLoader, save_path: Path, save_as_video: bool = False
