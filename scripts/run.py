@@ -5,6 +5,7 @@ import traceback
 import datetime
 import yaml
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from scripts.combine_parts import combine_parts
 
 
 def main(
@@ -79,6 +80,8 @@ def single_objects_multi_textures(
     seed: int = 0,
     log_images: bool = False,
 ):
+    uv_map_path_list = list()
+    name_list = list()
     for i, text in enumerate(text_list):
         kwargs = {
             "obj_path": obj_path,
@@ -93,6 +96,8 @@ def single_objects_multi_textures(
         }
         if save_name_list is not None:
             kwargs["save_name"] = save_name_list[i]
+        else:
+            kwargs["save_name"] = text
         if negative_text_list is not None:
             kwargs["negative_text"] = negative_text_list[i]
         if reference_image_path_list is not None:
@@ -101,6 +106,57 @@ def single_objects_multi_textures(
             kwargs["reference_image_repeat"] = reference_image_repeat_list[i]
 
         main(**kwargs)
+
+        uv_map_path_list.append(
+            os.path.join(save_root, kwargs["save_name"], "mesh", "albedo.png")
+        )
+        name_list.append(kwargs["save_name"])
+
+    return uv_map_path_list, name_list
+
+
+def single_objects_multi_textures_parts_combination(
+    obj_path: str,
+    text_list: List[str],
+    parts: List[str],
+    parts_mask_paths: List[str],
+    save_name_list: List[str] = None,
+    save_root: str = "results",
+    negative_text_list: List[str] = None,
+    reference_image_path_list: List[str] = None,
+    reference_image_repeat_list: List[int] = None,
+    diffusion_name: str = "v1-5-pruned-emaonly.safetensors",
+    upscale: bool = False,
+    image_resolution: int = 512,
+    texture_resolution: int = 2048,
+    seed: int = 0,
+    log_images: bool = False,
+):
+    uv_map_path_list, name_list = single_objects_multi_textures(
+        obj_path,
+        text_list,
+        save_name_list,
+        save_root,
+        negative_text_list,
+        reference_image_path_list,
+        reference_image_repeat_list,
+        diffusion_name,
+        upscale,
+        image_resolution,
+        texture_resolution,
+        seed,
+        log_images,
+    )
+
+    combine_parts(
+        obj_path=obj_path,
+        mtl_path=obj_path.replace(".obj", ".mtl"),
+        png_paths=uv_map_path_list,
+        parts=parts,
+        parts_mask_paths=parts_mask_paths,
+        concepts=name_list,
+        output_dir=os.path.join(save_root, "parts"),
+    )
 
 
 def multi_objects_multi_textures(
