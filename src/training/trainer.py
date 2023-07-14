@@ -43,10 +43,10 @@ class TEXTure:
 
         # Make view_dirs
         self.exp_path = make_path(self.cfg.log.exp_dir)
-        self.ckpt_path = make_path(self.exp_path / "checkpoints")
-        self.train_renders_path = make_path(self.exp_path / "vis" / "train")
-        self.eval_renders_path = make_path(self.exp_path / "vis" / "eval")
-        self.final_renders_path = make_path(self.exp_path / "results")
+        if self.cfg.log.log_images:
+            self.train_renders_path = make_path(self.exp_path / "vis" / "train")
+            self.eval_renders_path = make_path(self.exp_path / "vis" / "eval")
+        self.final_renders_path = self.exp_path
 
         self.init_logger()
         pyrallis.dump(self.cfg, (self.exp_path / "config.yaml").open("w"))
@@ -54,10 +54,9 @@ class TEXTure:
         self.view_dirs = ["front", "left", "back", "right", "overhead", "bottom"]
         self.mesh_model = self.init_mesh_model()
 
-        if self.cfg.guide.diffusion_name != "v1-5-pruned-emaonly.safetensors":
-            sd_webui_modules.sd_model_load(self.cfg.guide.diffusion_name)
+        sd_webui_modules.sd_model_load(self.cfg.guide.diffusion_name)
 
-        if self.cfg.guide.reference_image_path is not None:
+        if str(self.cfg.guide.reference_image_path) != str(None):
             self.reference_image = load_image(self.cfg.guide.reference_image_path)
 
             if self.cfg.guide.reference_image_repeat != 1:
@@ -137,7 +136,8 @@ class TEXTure:
     def paint(self):
         logger.info("Starting training ^_^")
         # Evaluate the initialization
-        self.evaluate(self.dataloaders["val"], self.eval_renders_path)
+        if self.cfg.log.log_images:
+            self.evaluate(self.dataloaders["val"], self.eval_renders_path)
         self.mesh_model.train()
 
         pbar = tqdm(
@@ -150,7 +150,8 @@ class TEXTure:
             self.paint_step += 1
             pbar.update(1)
             self.paint_viewpoint(data)
-            self.evaluate(self.dataloaders["val"], self.eval_renders_path)
+            if self.cfg.log.log_images:
+                self.evaluate(self.dataloaders["val"], self.eval_renders_path)
             self.mesh_model.train()
 
         self.mesh_model.change_default_to_median()
@@ -212,17 +213,18 @@ class TEXTure:
                     # Also save depths for debugging
                     torch.save(depths[0], save_path / f"{i:04d}_depth.pt")
 
-        # Texture map is the same, so just take the last result
-        texture = tensor2numpy(textures[0])
-        Image.fromarray(texture).save(
-            save_path / f"step_{self.paint_step:05d}_texture.png"
-        )
+        if not save_as_video:
+            # Texture map is the same, so just take the last result
+            texture = tensor2numpy(textures[0])
+            Image.fromarray(texture).save(
+                save_path / f"step_{self.paint_step:05d}_texture.png"
+            )
 
         if save_as_video:
             all_preds = np.stack(all_preds, axis=0)
 
             dump_vid = lambda video, name: imageio.mimsave(
-                save_path / f"step_{self.paint_step:05d}_{name}.mp4",
+                save_path / "result.mp4",
                 video,
                 fps=25,
                 quality=8,
@@ -356,9 +358,12 @@ class TEXTure:
         dirs = data["dir"]
         view = self.view_dirs[dirs]
         prompt = self.cfg.guide.text + ", " + self.cfg.guide.added_text.format(view)
+        negative_prompt = (
+            self.cfg.guide.negative_text + ", " + self.cfg.guide.added_negative_text
+        )
 
         logger.info(f"text: {prompt}")
-        logger.info(f"negative text: {self.cfg.guide.negative_text}")
+        logger.info(f"negative text: {negative_prompt}")
 
         # checkerboard
         if (
@@ -409,7 +414,7 @@ class TEXTure:
                 width=512,
                 height=512,
                 prompt=prompt,
-                negative_prompt=self.cfg.guide.negative_text,
+                negative_prompt=negative_prompt,
                 controlnets=controlnets,
                 seed=self.seed,
                 steps=self.cfg.optim.steps,
@@ -517,7 +522,7 @@ class TEXTure:
             width=self.cfg.guide.image_resolution,
             height=self.cfg.guide.image_resolution,
             prompt=prompt,
-            negative_prompt=self.cfg.guide.negative_text,
+            negative_prompt=negative_prompt,
             init_img=self.tensor_to_pil(resized_rgb_render),
             mask=self.tensor_to_pil(resized_update_render),
             controlnets=controlnets,
@@ -527,9 +532,11 @@ class TEXTure:
             mask_blur=0,
             denoising_strength=self.cfg.guide.denoising_strength,
         )[0]
-        pil_output.save(
-            self.train_renders_path / f"{self.paint_step:04d}_direct_output.jpg"
-        )
+
+        if self.cfg.log.log_images:
+            pil_output.save(
+                self.train_renders_path / f"{self.paint_step:04d}_direct_output.jpg"
+            )
 
         cropped_rgb_output = np.array(pil_output).astype(np.float32) / 255.0
         cropped_rgb_output = np.expand_dims(cropped_rgb_output, axis=0).transpose(

@@ -38,7 +38,8 @@ class GuideConfig:
     # Guiding added text prompt
     added_text: str = "{} view, consistent, best quality, extremely detailed, 8k, raw photo, highres, realistic, ultra detailed"
     # Guiding negative text prompt
-    negative_text: str = "cracks, scratches, shadows, blobs, stain, light reflections, reflections, light, lowres, extra digit, fewer digits, cropped, worst quality, low quality"
+    negative_text: str = ""
+    added_negative_text: str = "cracks, scratches, shadows, blobs, stain, light reflections, reflections, light, lowres, extra digit, fewer digits, cropped, worst quality, low quality"
     # The mesh to paint
     shape_path: str = None
     # Reference image Path
