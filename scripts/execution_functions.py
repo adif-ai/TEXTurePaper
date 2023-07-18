@@ -279,19 +279,19 @@ def single_object_multi_textures_parts_combination(
         )
     """
     uv_map_path_list, name_list = single_object_multi_textures(
-        obj_path,
-        text_list,
-        save_name_list,
-        save_root,
-        negative_text_list,
-        reference_image_path_list,
-        reference_image_repeat_list,
-        diffusion_name,
-        upscale,
-        image_resolution,
-        texture_resolution,
-        seed,
-        log_images,
+        obj_path=obj_path,
+        text_list=text_list,
+        save_name_list=save_name_list,
+        save_root=save_root,
+        negative_text_list=negative_text_list,
+        reference_image_path_list=reference_image_path_list,
+        reference_image_repeat_list=reference_image_repeat_list,
+        diffusion_name=diffusion_name,
+        upscale=upscale,
+        image_resolution=image_resolution,
+        texture_resolution=texture_resolution,
+        seed=seed,
+        log_images=log_images,
     )
 
     combine_parts(
