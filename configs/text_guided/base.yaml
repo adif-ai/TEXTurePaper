@@ -1,10 +1,13 @@
 guide:
-  append_direction: true
   diffusion_name: v1-5-pruned-emaonly.safetensors
-  shape_path: ./shapes/adler/table.obj
-  text: table, {} view, classic, antique, brown, wood
+  reference_image_path: references/crocodile leather.png
+  shape_path: ./shapes/ai/sofa_001.obj
+  text: sofa, crocodile leather
+  reference_image_repeat: 6
+  upscale: True
+  image_resolution: 512
 log:
-  exp_name: wood_table_webui
+  exp_name: sofa_crocodile_reference
   exp_root: experiments
 optim:
   seed: 3
