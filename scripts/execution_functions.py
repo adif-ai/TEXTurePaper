@@ -1,8 +1,14 @@
 import os
+import sys
 from loguru import logger
 import traceback
 import yaml
 from typing import List
+
+# add workspace path to pythonpath
+sys.path.append(
+    os.path.join(os.path.dirname(__file__), "..")
+)
 from scripts.combine_parts import combine_parts
 
 
