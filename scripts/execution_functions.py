@@ -397,7 +397,7 @@ if __name__ == "__main__":
         obj_path="shapes/ai/sofa_001.obj",
         text_list=["leather sofa, brown", "pink sofa, flower"],
         save_name_list=["brown leather sofa", "핑크 꽃 소파"],
-        save_root="demo",
+        save_root="results/multi_textures",
         upscale=True,
     )
 
@@ -410,7 +410,7 @@ if __name__ == "__main__":
             "references/gold.png",
         ],
         reference_image_repeat_list=[3, 1],
-        save_root="demo",
+        save_root="results/multi_textures",
         diffusion_name="Realistic_Vision_V2.0-fp16-no-ema.safetensors",
         upscale=True,
     )
@@ -424,7 +424,7 @@ if __name__ == "__main__":
             "references/gold.png",
         ],
         reference_image_repeat_list=[3, 1],
-        save_root="demo",
+        save_root="results/multi_textures",
         diffusion_name="Realistic_Vision_V2.0-fp16-no-ema.safetensors",
         upscale=True,
         parts_mask_paths=[
@@ -444,7 +444,7 @@ if __name__ == "__main__":
             "references/gold.png",
         ],
         reference_image_repeat_list=[3, 1],
-        save_root="demo_multi",
+        save_root="results/multi_objects_multi_textures",
         diffusion_name="Realistic_Vision_V2.0-fp16-no-ema.safetensors",
         upscale=True,
     )
