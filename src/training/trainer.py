@@ -319,7 +319,6 @@ class TEXTure:
             mask=outputs["mask"],
         )
 
-        self.log_train_image(rgb_render * (1 - update_mask), name="masked_input")
         self.log_train_image(rgb_render * refine_mask, name="refine_regions")
 
         # Crop to inner region based on object mask
@@ -402,136 +401,25 @@ class TEXTure:
                 resized_update_render[resized_update_render > 1] = 1
 
         if self.reference_image is None:
-            # pre-diffusion
-            controlnets = [
-                sd_webui_modules.depth_controlnet(
-                    control_image=self.tensor_to_pil(resized_depth_render),
-                    is_depth_map=True,
-                ),
-            ]
-
-            pre_output = sd_webui_modules.txt2img_wrapper(
-                width=512,
-                height=512,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                controlnets=controlnets,
-                seed=self.seed,
-                steps=self.cfg.optim.steps,
-            )[0]
-
-            pre_output = np.array(pre_output)
-            pre_output = pre_output[None, :]  # 0~255 uint8
-            pre_output = np.array(pre_output).astype(np.float32) / 255.0
-            pre_output = pre_output.transpose(
-                0, 3, 1, 2
-            )  # batch, channel, width, height, 0~1
-            pre_output = torch.from_numpy(pre_output).to(self.device)
-
-            pre_output = F.interpolate(
-                pre_output,
-                (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
-                mode="bilinear",
-                align_corners=False,
+            pil_output = self.text_only_paint(
+                crop,
+                outputs,
+                resized_update_render,
+                resized_rgb_render,
+                resized_depth_render,
+                prompt,
+                negative_prompt,
             )
-
-            resized_rgb_render = (
-                resized_rgb_render * (1 - resized_update_render)
-                + pre_output * resized_update_render
-            )
-
-            # add color to boundary
-            if self.paint_step > 1:
-                object_mask = crop(outputs["mask"])
-                object_mask = F.interpolate(
-                    object_mask,
-                    (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
-                    mode="bilinear",
-                    align_corners=False,
-                )
-                object_mask[object_mask > 0] = 1
-                boundary_mask = self.dilate(object_mask, 10)
-                boundary_mask[object_mask == 1] = 0
-                boundary_mask[boundary_mask > 0] = 1
-                resized_rgb_render = (
-                    resized_rgb_render * (1 - boundary_mask)
-                    + self.mesh_model.median_color.unsqueeze(0)
-                    .unsqueeze(-1)
-                    .unsqueeze(-1)
-                    .expand_as(resized_rgb_render)
-                    * boundary_mask
-                )
         else:
-            logger.info(
-                f"change inpainting fill setting to original and update mask region with reference image"
+            pil_output = self.reference_image_paint(
+                crop,
+                outputs,
+                resized_update_render,
+                resized_rgb_render,
+                resized_depth_render,
+                prompt,
+                negative_prompt,
             )
-
-            ref_image = (
-                np.array(
-                    self.reference_image.resize(
-                        (
-                            self.cfg.guide.image_resolution,
-                            self.cfg.guide.image_resolution,
-                        )
-                    )
-                ).astype(np.float32)
-                / 255.0
-            )
-            ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
-            ref_image = torch.from_numpy(ref_image).to(self.device)
-
-            object_mask = crop(outputs["mask"])
-            object_mask = F.interpolate(
-                object_mask,
-                (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
-                mode="bilinear",
-                align_corners=False,
-            )
-            object_mask[object_mask > 0] = 1
-            boundary_mask = self.dilate(object_mask, 10)
-            boundary_mask[object_mask == 1] = 0
-            boundary_mask[boundary_mask > 0] = 1
-
-            boundary_mask[resized_update_render[:, :1, :, :] == 1] = 1
-
-            resized_rgb_render = (
-                resized_rgb_render * (1 - boundary_mask) + ref_image * boundary_mask
-            )
-
-        self.log_train_image(resized_rgb_render, name="input_image")
-        self.log_train_image(resized_depth_render, name="input_depth")
-
-        # make output with inpainting
-        controlnets = [
-            sd_webui_modules.depth_controlnet(
-                control_image=self.tensor_to_pil(resized_depth_render),
-                is_depth_map=True,
-            ),
-            sd_webui_modules.inpaint_controlnet(),
-        ]
-
-        if self.reference_image is not None:
-            controlnets.append(
-                sd_webui_modules.reference_controlnet(
-                    control_image=self.reference_image,
-                    style_fidelity=self.cfg.guide.style_fidelity,
-                )
-            )
-
-        pil_output = sd_webui_modules.img2img_inpaint_wrapper(
-            width=self.cfg.guide.image_resolution,
-            height=self.cfg.guide.image_resolution,
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            init_img=self.tensor_to_pil(resized_rgb_render),
-            mask=self.tensor_to_pil(resized_update_render),
-            controlnets=controlnets,
-            seed=self.seed,
-            steps=self.cfg.optim.steps,
-            inpainting_fill=1,
-            mask_blur=0,
-            denoising_strength=self.cfg.guide.denoising_strength,
-        )[0]
 
         if self.cfg.log.log_images:
             pil_output.save(
@@ -570,6 +458,175 @@ class TEXTure:
         self.log_train_image(fitted_pred_rgb, name="fitted")
 
         return
+
+    def text_only_paint(
+        self,
+        crop,
+        outputs,
+        resized_update_render,
+        resized_rgb_render,
+        resized_depth_render,
+        prompt,
+        negative_prompt,
+    ):
+        object_mask = crop(outputs["mask"])
+        object_mask = F.interpolate(
+            object_mask,
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+            mode="bilinear",
+            align_corners=False,
+        )
+        object_mask[object_mask > 0] = 1
+        resized_update_render[object_mask.expand_as(resized_update_render) == 0] = 1
+
+        self.log_train_image(
+            resized_rgb_render * (1 - resized_update_render), name="masked_input"
+        )
+        self.log_train_image(resized_depth_render, name="input_depth")
+        self.log_train_image(resized_rgb_render, name="input_image")
+
+        # txt2img
+        if torch.all(resized_update_render):
+            controlnets = [
+                sd_webui_modules.depth_controlnet(
+                    control_image=self.tensor_to_pil(resized_depth_render),
+                    is_depth_map=True,
+                ),
+            ]
+
+            pil_output = sd_webui_modules.txt2img_wrapper(
+                width=self.cfg.guide.image_resolution,
+                height=self.cfg.guide.image_resolution,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                controlnets=controlnets,
+                seed=self.seed,
+                steps=self.cfg.optim.steps,
+            )[0]
+        else:
+            # make output with inpainting
+            controlnets = [
+                sd_webui_modules.depth_controlnet(
+                    control_image=self.tensor_to_pil(resized_depth_render),
+                    is_depth_map=True,
+                ),
+                sd_webui_modules.inpaint_controlnet(),
+            ]
+
+            pil_output = sd_webui_modules.img2img_inpaint_wrapper(
+                width=self.cfg.guide.image_resolution,
+                height=self.cfg.guide.image_resolution,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                init_img=self.tensor_to_pil(resized_rgb_render),
+                mask=self.tensor_to_pil(resized_update_render),
+                controlnets=controlnets,
+                seed=self.seed,
+                steps=self.cfg.optim.steps,
+                inpainting_fill=1,
+                mask_blur=0,
+                denoising_strength=self.cfg.guide.denoising_strength,
+            )[0]
+
+        return pil_output
+
+    def reference_image_paint(
+        self,
+        crop,
+        outputs,
+        resized_update_render,
+        resized_rgb_render,
+        resized_depth_render,
+        prompt,
+        negative_prompt,
+    ):
+        object_mask = crop(outputs["mask"])
+        object_mask = F.interpolate(
+            object_mask,
+            (self.cfg.guide.image_resolution, self.cfg.guide.image_resolution),
+            mode="bilinear",
+            align_corners=False,
+        )
+        object_mask[object_mask > 0] = 1
+
+        ref_image = (
+            np.array(
+                self.reference_image.resize(
+                    (
+                        self.cfg.guide.image_resolution,
+                        self.cfg.guide.image_resolution,
+                    )
+                )
+            ).astype(np.float32)
+            / 255.0
+        )
+        ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
+        ref_image = torch.from_numpy(ref_image).to(self.device)
+
+        resized_rgb_render = (
+            resized_rgb_render * (1 - resized_update_render)
+            + ref_image * resized_update_render
+        )
+
+        resized_update_render[object_mask.expand_as(resized_update_render) == 0] = 1
+        self.log_train_image(
+            resized_rgb_render * (1 - resized_update_render), name="masked_input"
+        )
+        self.log_train_image(resized_rgb_render, name="input_image")
+        self.log_train_image(resized_depth_render, name="input_depth")
+
+        # txt2img
+        if torch.all(resized_update_render):
+            controlnets = [
+                sd_webui_modules.depth_controlnet(
+                    control_image=self.tensor_to_pil(resized_depth_render),
+                    is_depth_map=True,
+                ),
+                sd_webui_modules.reference_controlnet(
+                    control_image=self.reference_image,
+                    style_fidelity=self.cfg.guide.style_fidelity,
+                ),
+            ]
+
+            pil_output = sd_webui_modules.txt2img_wrapper(
+                width=self.cfg.guide.image_resolution,
+                height=self.cfg.guide.image_resolution,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                controlnets=controlnets,
+                seed=self.seed,
+                steps=self.cfg.optim.steps,
+            )[0]
+        else:
+            # make output with inpainting
+            controlnets = [
+                sd_webui_modules.depth_controlnet(
+                    control_image=self.tensor_to_pil(resized_depth_render),
+                    is_depth_map=True,
+                ),
+                sd_webui_modules.inpaint_controlnet(),
+                sd_webui_modules.reference_controlnet(
+                    control_image=self.reference_image,
+                    style_fidelity=self.cfg.guide.style_fidelity,
+                ),
+            ]
+
+            pil_output = sd_webui_modules.img2img_inpaint_wrapper(
+                width=self.cfg.guide.image_resolution,
+                height=self.cfg.guide.image_resolution,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                init_img=self.tensor_to_pil(resized_rgb_render),
+                mask=self.tensor_to_pil(resized_update_render),
+                controlnets=controlnets,
+                seed=self.seed,
+                steps=self.cfg.optim.steps,
+                inpainting_fill=1,
+                mask_blur=0,
+                denoising_strength=self.cfg.guide.denoising_strength,
+            )[0]
+
+        return pil_output
 
     def eval_render(self, data):
         theta = data["theta"]

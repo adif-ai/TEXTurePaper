@@ -26,7 +26,7 @@ class RenderConfig:
     # Additional views to use before rotating around shape
     views_before: List[Tuple[float,float]] = field(default_factory=[[180,1],[180,179]].copy)
     # Additional views to use after rotating around shape
-    views_after: List[Tuple[float, float]] = field(default_factory=[[180,1], [180,150], [0,150]].copy)
+    views_after: List[Tuple[float, float]] = field(default_factory=[[0,30], [180,150], [0,150]].copy)
     # Whether to alternate between the rotating views from the different sides
     alternate_views: bool = True
 
