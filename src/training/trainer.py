@@ -563,68 +563,54 @@ class TEXTure:
         ref_image = np.expand_dims(ref_image, axis=0).transpose(0, 3, 1, 2)
         ref_image = torch.from_numpy(ref_image).to(self.device)
 
+        # boundary_mask = self.dilate(object_mask, 10)
+        # boundary_mask[object_mask == 1] = 0
+        # boundary_mask[boundary_mask > 0] = 1
+        # ref_image_mask = boundary_mask.clone()
+        # ref_image_mask[resized_update_render[:, :1, :, :] == 1] = 1
+
+        ref_image_mask = torch.zeros_like(object_mask)
+        ref_image_mask[object_mask == 0] = 1
+        ref_image_mask[resized_update_render[:, :1, :, :] == 1] = 1
+
         resized_rgb_render = (
-            resized_rgb_render * (1 - resized_update_render)
-            + ref_image * resized_update_render
+            resized_rgb_render * (1 - ref_image_mask) + ref_image * ref_image_mask
         )
 
-        resized_update_render[object_mask.expand_as(resized_update_render) == 0] = 1
+        # resized_update_render[object_mask.expand_as(resized_update_render) == 0] = 1
         self.log_train_image(
             resized_rgb_render * (1 - resized_update_render), name="masked_input"
         )
         self.log_train_image(resized_rgb_render, name="input_image")
         self.log_train_image(resized_depth_render, name="input_depth")
 
-        # txt2img
-        if torch.all(resized_update_render):
-            controlnets = [
-                sd_webui_modules.depth_controlnet(
-                    control_image=self.tensor_to_pil(resized_depth_render),
-                    is_depth_map=True,
-                ),
-                sd_webui_modules.reference_controlnet(
-                    control_image=self.reference_image,
-                    style_fidelity=self.cfg.guide.style_fidelity,
-                ),
-            ]
+        # make output with inpainting
+        controlnets = [
+            sd_webui_modules.depth_controlnet(
+                control_image=self.tensor_to_pil(resized_depth_render),
+                is_depth_map=True,
+            ),
+            sd_webui_modules.inpaint_controlnet(),
+            sd_webui_modules.reference_controlnet(
+                control_image=self.reference_image,
+                style_fidelity=self.cfg.guide.style_fidelity,
+            ),
+        ]
 
-            pil_output = sd_webui_modules.txt2img_wrapper(
-                width=self.cfg.guide.image_resolution,
-                height=self.cfg.guide.image_resolution,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                controlnets=controlnets,
-                seed=self.seed,
-                steps=self.cfg.optim.steps,
-            )[0]
-        else:
-            # make output with inpainting
-            controlnets = [
-                sd_webui_modules.depth_controlnet(
-                    control_image=self.tensor_to_pil(resized_depth_render),
-                    is_depth_map=True,
-                ),
-                sd_webui_modules.inpaint_controlnet(),
-                sd_webui_modules.reference_controlnet(
-                    control_image=self.reference_image,
-                    style_fidelity=self.cfg.guide.style_fidelity,
-                ),
-            ]
-
-            pil_output = sd_webui_modules.img2img_inpaint_wrapper(
-                width=self.cfg.guide.image_resolution,
-                height=self.cfg.guide.image_resolution,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                init_img=self.tensor_to_pil(resized_rgb_render),
-                mask=self.tensor_to_pil(resized_update_render),
-                controlnets=controlnets,
-                seed=self.seed,
-                steps=self.cfg.optim.steps,
-                inpainting_fill=1,
-                mask_blur=0,
-                denoising_strength=self.cfg.guide.denoising_strength,
-            )[0]
+        pil_output = sd_webui_modules.img2img_inpaint_wrapper(
+            width=self.cfg.guide.image_resolution,
+            height=self.cfg.guide.image_resolution,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            init_img=self.tensor_to_pil(resized_rgb_render),
+            mask=self.tensor_to_pil(resized_update_render),
+            controlnets=controlnets,
+            seed=self.seed,
+            steps=self.cfg.optim.steps,
+            inpainting_fill=1,
+            mask_blur=0,
+            denoising_strength=self.cfg.guide.denoising_strength,
+        )[0]
 
         return pil_output
 
