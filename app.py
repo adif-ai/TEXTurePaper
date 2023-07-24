@@ -26,6 +26,7 @@ def single_object_single_texture(
     texture_resolution: int = 2048,
     seed: int = 0,
     log_images: bool = False,
+    fast_mode: bool = False,
 ):
     """
     3D object 1개에 대한 텍스처를 생성하는 함수입니다.
@@ -52,6 +53,7 @@ def single_object_single_texture(
         texture_resolution (int, optional): UV map의 이미지의 resolution입니다. 기본은 2048 X 2048 입니다. Defaults to 2048.
         seed (int, optional): stable diffusion의 이미지 생성 결과의 랜덤성을 결정하는 seed 입니다. 값을 바꿀 경우, 약간 다른 텍스처가 생성됩니다. Defaults to 0.
         log_images (bool, optional): 텍스처 생성 과정의 중간 결과물의 저장 여부를 결정합니다. 기본은 저장하지 않음 입니다. Defaults to False.
+        fast_mode (bool, optional): 이미지 생성 각도를 위, 아래, 옆 3가지만 생성하여 빠르게 결과를 확인하는 용도. Defaults to False.
 
     결과:
         save_root
@@ -96,6 +98,12 @@ def single_object_single_texture(
             },
             "optim": {"seed": seed},
         }
+        if fast_mode:
+            config_dict["render"] = {
+                "n_views": 4,
+                "views_before": [[180, 1]],
+                "views_after": [[180, 179]],
+            }
         config_path = os.path.join(save_root, save_name, "run.yaml")
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w") as f:
@@ -123,6 +131,7 @@ def process(
     image_resolution,
     texture_resolution,
     seed,
+    fast_mode,
 ):
     try:
         if reference_image is not None:
@@ -157,7 +166,8 @@ def process(
             image_resolution=image_resolution,
             texture_resolution=texture_resolution,
             seed=seed,
-            log_images=True,
+            log_images=False,
+            fast_mode=fast_mode,
         )
 
         # output path
@@ -298,13 +308,19 @@ with gr.Blocks(
                 (3) arcane-diffusion-v3.ckpt: 넷플릭스 애니메이션 아케인 느낌의 이미지를 생성하는 모델입니다.
                 (4) Realistic_Vision_V2.0-fp16-no-ema.safetensors: 실사 느낌의 이미지를 생성하는 모델입니다.""",
             )
+
+            fast_mode = gr.Checkbox(
+                label="Fast Mode",
+                info="텍스처 이미지 생성하는 각도를 최소화하여 2배 이상 빠르게 결과를 확인할 수 있음. 텍스처가 비어있는 부분이 생길 수 있음",
+            )
+
             image_resolution = gr.Slider(
                 label="Image Resolution",
                 minimum=256,
                 maximum=1024,
                 value=512,
                 step=128,
-                info="Stable diffusion 이미지 출력 결과 사이즈. 512는 최대 10분, 1024는 최대 40분 소요될 수 있음",
+                info="Stable diffusion 이미지 출력 결과 사이즈. 512는 최대 15분, 1024는 최대 60분 소요될 수 있음",
             )
             texture_resolution = gr.Slider(
                 label="UV Map Resolution",
@@ -364,6 +380,7 @@ with gr.Blocks(
         image_resolution,
         texture_resolution,
         seed,
+        fast_mode,
     ]
     run_event = run_button.click(
         fn=process,
