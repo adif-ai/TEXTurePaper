@@ -274,17 +274,19 @@ with gr.Blocks(
     title="Adler 3D, Object Texture Generation",
 ).queue() as block:
     with gr.Row():
-        gr.Markdown("## Adler 3D, Object Texture Generation")
+        gr.Markdown("# Adler 3D, Object Texture Generation")
     with gr.Row():
         with gr.Column():
+            gr.Markdown("## 텍스처 생성을 위한 입력 값 설정")
             obj_path = gr.Model3D(label="OBJ 파일")
+            gr.Markdown("(참고) OBJ 파일 업로드 시, 업로드 중인 상태 창이 보이더라도 텍스처 생성 가능합니다.")
             mtl_file = gr.File(label="MTL 파일")
             text = gr.Textbox(
                 label="Text",
                 info="텍스처에 반영될 텍스트 프롬프트를 영어로 입력하세요. object의 종류와 컬러, 재질 등을 입력해줍니다. 예시: sofa, blue, leather",
             )
             negative_text = gr.Textbox(
-                label="Negative Text", info="텍스처에 반영되지 않았으면 하는 요소를 영어로 입력하세요."
+                label="Negative Text", info="(선택 사항) 텍스처에 반영되지 않았으면 하는 요소를 영어로 입력하세요."
             )
             diffusion_name = gr.Dropdown(
                 sd_list,
@@ -302,7 +304,7 @@ with gr.Blocks(
                 maximum=1024,
                 value=512,
                 step=128,
-                info="Stable diffusion 이미지 출력 결과 사이즈. 대략적으로 512는 5분, 1024는 20분 소요됨",
+                info="Stable diffusion 이미지 출력 결과 사이즈. 512는 최대 10분, 1024는 최대 40분 소요될 수 있음",
             )
             texture_resolution = gr.Slider(
                 label="UV Map Resolution",
@@ -323,7 +325,7 @@ with gr.Blocks(
             )
 
             with gr.Accordion(
-                "[Reference Image] 재질, 컬러, 컨셉 등을 표현하는 레퍼런스 이미지를 첨부합니다. 레퍼런스 이미지 사용 여부는 옵션입니다.",
+                "[Reference Image] 재질, 컬러, 컨셉 등을 표현하는 레퍼런스 이미지를 첨부합니다. 레퍼런스 이미지 사용 여부는 선택 사항입니다.",
                 open=True,
             ):
                 reference_image = gr.Image(source="upload", type="numpy")
@@ -337,6 +339,7 @@ with gr.Blocks(
                 )
 
         with gr.Column():
+            gr.Markdown("## 텍스처 생성 결과")
             gpu_status = gr.Textbox(
                 label="GPU 사용 현황", info="GPU 상황을 파악하여, 텍스처 생성 가능 여부를 출력합니다."
             )
