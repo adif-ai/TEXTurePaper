@@ -9,7 +9,7 @@ class Mesh:
 
         if ".obj" in obj_path:
             try:
-                mesh = kal.io.obj.import_mesh(obj_path, with_normals=True, with_materials=True)
+                mesh = kal.io.obj.import_mesh(obj_path, with_normals=True, with_materials=True, heterogeneous_mesh_handler=kal.io.utils.heterogeneous_mesh_handler_naive_homogenize)
             except:
                 mesh = kal.io.obj.import_mesh(obj_path, with_normals=True, with_materials=False)
 

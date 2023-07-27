@@ -104,7 +104,7 @@ def single_object_single_texture(
                 "views_before": [[180, 1]],
                 "views_after": [[180, 179]],
             }
-        config_path = os.path.join(save_root, save_name, "run.yaml")
+        config_path = os.path.join(save_root, save_name, "input", "run.yaml")
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w") as f:
             yaml.dump(config_dict, f)
@@ -112,7 +112,6 @@ def single_object_single_texture(
         os.system(
             f"python -m scripts.run_texture --config_path='{config_path}' >> {os.path.join(save_root, 'app.log')}"
         )
-        os.remove(config_path)
     else:
         logger.info(
             f'already exists: {os.path.join(save_root, save_name, "mesh", "albedo.png")}'
@@ -134,24 +133,31 @@ def process(
     fast_mode,
 ):
     try:
+        # save path
+        save_name = str(datetime.datetime.now()).replace(" ", "-")
+        save_root = os.path.join(os.path.dirname(__file__), "app_outputs")
+        save_path = os.path.join(save_root, save_name)
+
+        # input files
+        input_dir = os.path.join(save_path, "input")
+        os.makedirs(input_dir, exist_ok=True)
+
+        shutil.copy2(obj_path, os.path.join(input_dir, os.path.basename(obj_path)))
+        obj_path = os.path.join(input_dir, os.path.basename(obj_path))
+
         if reference_image is not None:
             # save reference image
-            reference_image_path = os.path.join(os.path.dirname(obj_path), "ref.png")
+            reference_image_path = os.path.join(input_dir, "ref.png")
             PIL.Image.fromarray(reference_image).save(reference_image_path)
         else:
             reference_image_path = None
 
         # save mtl file
         mtl_path = os.path.join(
-            os.path.dirname(obj_path),
-            os.path.basename(obj_path).replace(".obj", ".mtl"),
+            input_dir,
+            os.path.basename(mtl_file.name),
         )
         shutil.copy2(mtl_file.name, mtl_path)
-
-        # save path
-        save_name = str(datetime.datetime.now()).replace(" ", "-")
-        save_root = os.path.join(os.path.dirname(__file__), "app_outputs")
-        save_path = os.path.join(save_root, save_name)
 
         single_object_single_texture(
             obj_path=obj_path,
